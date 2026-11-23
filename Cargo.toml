@@ -1,0 +1,28 @@
+[package]
+name = "modelkin-instruction"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+
+[dependencies]
+ammonia = "4"
+anyhow = "1"
+argon2 = "0.5"
+axum = { version = "0.8", features = ["multipart"] }
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
+minijinja = { version = "2", features = ["builtins"] }
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+rpassword = "7"
+scrypt = "0.11"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "sqlite", "json", "migrate", "macros"] }
+subtle = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }

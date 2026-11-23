@@ -1,0 +1,68 @@
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" important;
+@source "./EditorWorkspace.tsx";
+@source "../templates/page.html";
+
+@theme inline {
+  --font-sans: var(--font-body);
+  --font-display: var(--font-unbounded);
+}
+
+@layer base {
+  html {
+    background: #f4f1e9;
+  }
+
+  button,
+  input,
+  textarea {
+    font: inherit;
+  }
+
+  button {
+    cursor: pointer;
+  }
+}
+
+.figma-custom-code-fragment {
+  display: contents;
+}
+
+.figma-bypass-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 2147483647;
+  transform: translateY(-150%);
+  border-radius: 6px;
+  background: #111827;
+  color: #fff;
+  padding: 8px 12px;
+  font: 600 14px/1.2 system-ui, sans-serif;
+  text-decoration: none;
+}
+
+.figma-bypass-link:focus {
+  transform: translateY(0);
+}
+
+:root{--font-body:Manrope,"Segoe UI",sans-serif;--font-unbounded:Unbounded,Manrope,sans-serif}
+#figma-editor :where(h1,h2,h3,p){margin:0}
+#figma-editor :where(button,input,textarea){min-height:0;padding:0;border-color:transparent;border-radius:0;background-color:transparent;line-height:inherit}
+#figma-editor :where(button,input,textarea):focus-visible{outline:2px solid #203b36;outline-offset:3px}
+body:has(#figma-editor)>.top{display:none}
+#app:has(#figma-editor){max-width:none;padding:0}
+#figma-editor .handle{flex:none}
+#figma-editor .markdown img{max-width:100%;height:auto}
+.step-preview-content{overflow-wrap:anywhere}
+.step-preview-content img,.markdown img{display:block;max-width:100%;height:auto;object-fit:contain}
+.step-preview-content .markdown,.live-block{max-width:100%;overflow-x:auto}
+.step-markdown .cm-editor{min-height:12rem;font:400 .95rem/1.65 var(--font-body)}
+.step-markdown .cm-scroller{font:inherit}
+.step-markdown .cm-content{padding:.9rem 1rem;min-width:0}
+.step-markdown .cm-line{padding:0}
+.step-markdown .cm-editor.cm-focused{outline:0}
+.step-markdown .live-block{cursor:text;white-space:normal}
+.step-markdown .live-block img{max-height:26rem}
+.step-markdown .live-block pre{white-space:pre-wrap}
+#figma-editor button.markdown-mode{padding:.4rem 1rem;color:#625e55;font-size:.75rem;text-decoration:underline;text-underline-offset:3px}

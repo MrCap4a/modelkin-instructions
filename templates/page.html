@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title or "Инструкции · Моделкин" }}</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/figma-editor.css">
+{% if not reader and not error %}
+<script src="/static/figma-editor.js" defer></script>
+<script src="/static/admin.js" defer></script>
+{% endif %}
+</head>
+<body>
+{% if not reader %}<header class="top"><div class="brand"><span class="symbol"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H13v15h4.5a2.5 2.5 0 0 1 2.5 2.5z"/></svg></span><span>Моделкин<small>мастерская инструкций</small></span></div><nav id="admin-nav" class="section-nav" aria-label="Администрирование" hidden></nav><div class="account-actions"><span id="account-label" hidden>Администратор</span><button id="logout" class="quiet" hidden>Выйти</button></div></header>{% endif %}
+{% if reader %}
+<main class="min-h-screen bg-[#f4f1e9] px-5 py-8 text-[#24231f]">
+  <article class="mx-auto max-w-3xl">
+    <header class="reader-outline mb-10">
+      <span class="tag rounded-full px-3 py-1.5 text-xs font-bold" style="--tag:{{ level.color }};--tag-ink:{{ tag_ink }}">{{ level.name }}</span>
+      <h1 class="mt-5 font-display text-4xl font-bold tracking-[-.04em] sm:text-5xl">{{ title }}</h1>
+      {% if archived %}<p class="mt-4 text-sm text-black/55">Архивная версия</p>{% endif %}
+      {% if step %}
+      <p class="mt-4 text-sm text-black/55">Шаг {{ page }} из {{ count }}</p>
+      <progress value="{{ page }}" max="{{ count }}" aria-label="Прогресс инструкции"></progress>
+      {% endif %}
+    </header>
+    {% if step %}
+      <section class="rounded-2xl border border-black/10 bg-[#fffdf8] p-6 shadow-[0_6px_24px_rgba(48,38,20,.06)] sm:p-8">
+        <div class="flex gap-4">
+          <span class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#f05a39] font-display text-sm font-bold text-white">{{ page }}</span>
+          <div class="min-w-0 flex-1">
+            <h2 class="font-display text-xl font-bold">{{ step.title or ("Шаг " ~ page) }}</h2>
+            {% if step.image %}<div class="markdown"><img src="/image/{{ step.image }}" alt="Иллюстрация к шагу"></div>{% endif %}
+            <div class="markdown mt-3 text-sm leading-7 text-black/65">{{ body|safe }}</div>
+          </div>
+        </div>
+      </section>
+      <nav class="paging" aria-label="Перелистывание">
+        {% if page > 1 %}<a class="button quiet" href="{{ reader_base }}/{{ page - 1 }}">Предыдущий шаг</a>{% endif %}
+        {% if page < count %}<a class="button primary next" href="{{ reader_base }}/{{ page + 1 }}">Готово, к следующему</a>
+        {% else %}<span class="next finish">Последний шаг</span>{% endif %}
+      </nav>
+      <nav class="reader-step-list mt-4" aria-label="Шаги инструкции">
+        {% for name in outline %}
+        <a href="{{ reader_base }}/{{ loop.index }}" {% if loop.index == page %}aria-current="step"{% endif %}><span>{{ loop.index }}</span>{{ name or ("Шаг " ~ loop.index) }}</a>
+        {% endfor %}
+      </nav>
+    {% else %}<div class="card">Для этого уровня пока нет шагов.</div>{% endif %}
+  </article>
+</main>
+{% elif error %}
+<main class="reader"><div class="card"><h1>{{ error }}</h1></div></main>
+{% else %}
+<main id="app" aria-busy="true"><p class="loading">Загрузка…</p></main>
+<p id="notice" role="status" hidden></p>
+{% endif %}
+</body>
+</html>

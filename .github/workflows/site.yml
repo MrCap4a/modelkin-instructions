@@ -1,0 +1,162 @@
+name: Instructions
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_USER: modelkin
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_DB: modelkin
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U modelkin -d modelkin"
+          --health-interval 5s --health-timeout 4s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgresql://modelkin:ci-password@localhost:5432/modelkin
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build the editor from source
+        run: |
+          npm --prefix frontend ci --include=dev
+          npm --prefix frontend run build
+      - name: Restore Cargo dependencies and build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-ci-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
+      - name: Check formatting, Rust and JavaScript
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          node --check static/admin.js
+          bash -n deploy/release.sh
+      - name: Run tests with PostgreSQL
+        run: cargo test --locked -- --include-ignored
+
+  image:
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          tags: modelkin-instruction:${{ github.sha }}
+          build-args: REVISION=${{ github.sha }}
+          load: true
+          cache-from: type=gha,scope=modelkin-instruction
+          cache-to: type=gha,mode=max,scope=modelkin-instruction
+      - name: Start the production image with a fresh database
+        env:
+          APP_IMAGE: modelkin-instruction:${{ github.sha }}
+          POSTGRES_ADMIN_PASSWORD: runner-only-admin
+          POSTGRES_PASSWORD: runner-only-app
+          PROXY_NETWORK: modelkin-ci-proxy
+        run: |
+          docker network create "$PROXY_NETWORK"
+          stack=(docker compose -p modelkin-ci -f deploy/compose.yml)
+          trap '"${stack[@]}" down -v; docker network rm "$PROXY_NETWORK"' EXIT
+          "${stack[@]}" up -d --wait --wait-timeout 180 || { "${stack[@]}" logs; exit 1; }
+          check() { "${stack[@]}" exec -T app curl -fsS "http://127.0.0.1:8080/$1"; }
+          [[ "$(check healthz)" == "$GITHUB_SHA" ]]
+          for asset in figma-editor.js figma-editor.css; do
+            check "static/$asset" > "$RUNNER_TEMP/$asset"
+            test -s "$RUNNER_TEMP/$asset"
+          done
+      - name: Package the verified image
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: docker save "modelkin-instruction:$GITHUB_SHA" | gzip -1 > "$RUNNER_TEMP/image.tar.gz"
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          name: production-image
+          path: ${{ runner.temp }}/image.tar.gz
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
+  deploy:
+    needs: image
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: modelkin-instruction-production
+      cancel-in-progress: false
+    env:
+      SERVER_HOST: ${{ vars.SERVER_HOST }}
+      SERVER_USER: ${{ vars.SERVER_USER }}
+      SERVER_HOST_KEY: ${{ vars.SERVER_HOST_KEY }}
+      SITE_DOMAIN: ${{ vars.SITE_DOMAIN || 'xn--d1acjhedmc.xn--p1ai' }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure SSH with the pinned host key
+        env:
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          [[ "$SERVER_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]]
+          [[ "$SERVER_USER" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]]
+          [[ "$SITE_DOMAIN" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9]$ ]]
+          [[ -n "$SERVER_HOST_KEY" && -n "$SERVER_SSH_KEY" ]] || {
+            echo "::error::Configure SERVER_HOST_KEY and SERVER_SSH_KEY as described in deploy/README.md."
+            exit 1
+          }
+          install -d -m 700 ~/.ssh
+          umask 077
+          printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/modelkin_key
+          printf '%s\n' "$SERVER_HOST_KEY" > ~/.ssh/modelkin_hosts
+          printf 'Host modelkin-server\n  HostName %s\n  User %s\n  IdentityFile ~/.ssh/modelkin_key\n  UserKnownHostsFile ~/.ssh/modelkin_hosts\n  StrictHostKeyChecking yes\n  IdentitiesOnly yes\n  BatchMode yes\n  ConnectTimeout 15\n  ServerAliveInterval 15\n  ServerAliveCountMax 4\n' \
+            "$SERVER_HOST" "$SERVER_USER" > ~/.ssh/config
+      - uses: actions/download-artifact@v4
+        with:
+          name: production-image
+          path: ${{ runner.temp }}
+      - name: Upload and activate over SSH
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          head=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          if [[ "$head" != "$GITHUB_SHA" ]]; then
+            echo "A newer main commit exists. Skipping this deploy."
+            exit 0
+          fi
+          stage="modelkin-instruction/incoming-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          # Expand the runner-generated staging path here; the server expands HOME.
+          # shellcheck disable=SC2029
+          ssh modelkin-server "umask 077; mkdir -p \"\$HOME/$stage\""
+          trap 'ssh modelkin-server "rm -f -- \"\$HOME/$stage/image.tar.gz\" \"\$HOME/$stage/compose.yml\" \"\$HOME/$stage/release.sh\" \"\$HOME/$stage/current-link\"; rmdir -- \"\$HOME/$stage\""' EXIT
+          scp deploy/compose.yml deploy/release.sh "$RUNNER_TEMP/image.tar.gz" "modelkin-server:$stage/"
+          # The runner supplies the checked revision and validated domain.
+          # shellcheck disable=SC2029
+          ssh modelkin-server "bash \"\$HOME/$stage/release.sh\" \"\$HOME/$stage\" '$GITHUB_SHA' '$SITE_DOMAIN'"
+          echo "active=true" >> "$GITHUB_OUTPUT"
+      - name: Verify the live commit
+        if: steps.release.outputs.active == 'true'
+        run: |
+          actual=$(curl -fsS --max-time 10 --retry 3 "https://$SITE_DOMAIN/healthz")
+          [[ "$actual" == "$GITHUB_SHA" ]]

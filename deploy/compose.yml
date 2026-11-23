@@ -1,0 +1,63 @@
+name: modelkin-instruction
+
+services:
+  app:
+    image: ${APP_IMAGE:?Run the release workflow first}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://modelkin:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/modelkin?sslmode=disable
+      MODELKIN_HTTPS: "1"
+      MODELKIN_TRUST_PROXY: "1"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "--max-time", "4", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      backend:
+      proxy:
+        aliases:
+          - modelkin-instruction
+
+  db:
+    image: postgres:17-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD in .env}
+      MODELKIN_DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    configs:
+      - source: initialize_database
+        target: /docker-entrypoint-initdb.d/01-modelkin.sh
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "modelkin", "-d", "modelkin"]
+      interval: 5s
+      timeout: 4s
+      retries: 20
+
+configs:
+  initialize_database:
+    content: |
+      #!/bin/sh
+      psql --username "$$POSTGRES_USER" --dbname postgres -v ON_ERROR_STOP=1 -v modelkin_password="$$MODELKIN_DB_PASSWORD" <<'SQL'
+      CREATE ROLE modelkin LOGIN PASSWORD :'modelkin_password';
+      CREATE DATABASE modelkin OWNER modelkin;
+      SQL
+
+volumes:
+  pgdata:
+
+networks:
+  backend:
+    internal: true
+  proxy:
+    external: true
+    name: ${PROXY_NETWORK:-compose_app-network}
