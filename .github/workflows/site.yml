@@ -51,7 +51,6 @@ jobs:
           cargo fmt --check
           cargo clippy --locked --all-targets -- -D warnings
           node --check static/admin.js
-          bash -n deploy/release.sh
       - name: Run tests with PostgreSQL
         run: cargo test --locked -- --include-ignored
 
@@ -68,6 +67,9 @@ jobs:
           platforms: linux/amd64
           tags: modelkin-instruction:${{ github.sha }}
           build-args: REVISION=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
           load: true
           cache-from: type=gha,scope=modelkin-instruction
           cache-to: type=gha,mode=max,scope=modelkin-instruction
@@ -100,63 +102,36 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  deploy:
+  publish:
     needs: image
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     concurrency:
-      group: modelkin-instruction-production
+      group: modelkin-publish-main
       cancel-in-progress: false
-    env:
-      SERVER_HOST: ${{ vars.SERVER_HOST }}
-      SERVER_USER: ${{ vars.SERVER_USER }}
-      SERVER_HOST_KEY: ${{ vars.SERVER_HOST_KEY }}
-      SITE_DOMAIN: ${{ vars.SITE_DOMAIN || 'xn--d1acjhedmc.xn--p1ai' }}
+    permissions:
+      contents: read
+      packages: write
     steps:
-      - uses: actions/checkout@v5
-      - name: Configure SSH with the pinned host key
-        env:
-          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
-        run: |
-          [[ "$SERVER_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]]
-          [[ "$SERVER_USER" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]]
-          [[ "$SITE_DOMAIN" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9]$ ]]
-          [[ -n "$SERVER_HOST_KEY" && -n "$SERVER_SSH_KEY" ]] || {
-            echo "::error::Configure SERVER_HOST_KEY and SERVER_SSH_KEY as described in deploy/README.md."
-            exit 1
-          }
-          install -d -m 700 ~/.ssh
-          umask 077
-          printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/modelkin_key
-          printf '%s\n' "$SERVER_HOST_KEY" > ~/.ssh/modelkin_hosts
-          printf 'Host modelkin-server\n  HostName %s\n  User %s\n  IdentityFile ~/.ssh/modelkin_key\n  UserKnownHostsFile ~/.ssh/modelkin_hosts\n  StrictHostKeyChecking yes\n  IdentitiesOnly yes\n  BatchMode yes\n  ConnectTimeout 15\n  ServerAliveInterval 15\n  ServerAliveCountMax 4\n' \
-            "$SERVER_HOST" "$SERVER_USER" > ~/.ssh/config
       - uses: actions/download-artifact@v4
         with:
           name: production-image
           path: ${{ runner.temp }}
-      - name: Upload and activate over SSH
-        id: release
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Publish the tested image
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          gzip -dc "$RUNNER_TEMP/image.tar.gz" | docker load
+          docker tag "modelkin-instruction:$GITHUB_SHA" "$image:$GITHUB_SHA"
+          docker push "$image:$GITHUB_SHA"
           head=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
-          if [[ "$head" != "$GITHUB_SHA" ]]; then
-            echo "A newer main commit exists. Skipping this deploy."
-            exit 0
+          if [[ "$head" == "$GITHUB_SHA" ]]; then
+            docker tag "$image:$GITHUB_SHA" "$image:main"
+            docker push "$image:main"
           fi
-          stage="modelkin-instruction/incoming-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          # Expand the runner-generated staging path here; the server expands HOME.
-          # shellcheck disable=SC2029
-          ssh modelkin-server "umask 077; mkdir -p \"\$HOME/$stage\""
-          trap 'ssh modelkin-server "rm -f -- \"\$HOME/$stage/image.tar.gz\" \"\$HOME/$stage/compose.yml\" \"\$HOME/$stage/release.sh\" \"\$HOME/$stage/current-link\"; rmdir -- \"\$HOME/$stage\""' EXIT
-          scp deploy/compose.yml deploy/release.sh "$RUNNER_TEMP/image.tar.gz" "modelkin-server:$stage/"
-          # The runner supplies the checked revision and validated domain.
-          # shellcheck disable=SC2029
-          ssh modelkin-server "bash \"\$HOME/$stage/release.sh\" \"\$HOME/$stage\" '$GITHUB_SHA' '$SITE_DOMAIN'"
-          echo "active=true" >> "$GITHUB_OUTPUT"
-      - name: Verify the live commit
-        if: steps.release.outputs.active == 'true'
-        run: |
-          actual=$(curl -fsS --max-time 10 --retry 3 "https://$SITE_DOMAIN/healthz")
-          [[ "$actual" == "$GITHUB_SHA" ]]
