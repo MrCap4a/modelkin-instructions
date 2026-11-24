@@ -2,7 +2,7 @@ FROM node:24-bookworm-slim AS editor
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --include=dev --no-audit --no-fund
-COPY frontend/*.tsx frontend/editor.css ./
+COPY frontend/*.ts frontend/*.tsx frontend/editor.css ./
 COPY templates /app/templates
 RUN npm run build
 

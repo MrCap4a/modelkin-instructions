@@ -16,6 +16,7 @@ frontend/**
 !frontend/package.json
 !frontend/package-lock.json
 !frontend/*.tsx
+!frontend/*.ts
 !frontend/editor.css
 !templates/
 !templates/**

@@ -66,3 +66,26 @@ body:has(#figma-editor)>.top{display:none}
 .step-markdown .live-block img{max-height:26rem}
 .step-markdown .live-block pre{white-space:pre-wrap}
 #figma-editor button.markdown-mode{padding:.4rem 1rem;color:#625e55;font-size:.75rem;text-decoration:underline;text-underline-offset:3px}
+.step-markdown .cm-editor,.step-reading{max-height:min(68vh,48rem)}
+.step-reading{padding:1rem;overflow:auto}
+.step-markdown .cm-scroller{overflow:auto}
+#figma-editor .step-format-bar:has(~ .step-reading){display:none!important}
+.step-markdown .lp-heading{line-height:1.35;font-weight:750;padding-block:.26em}
+.step-markdown .lp-h1{font-size:1.65em}
+.step-markdown .lp-h2{font-size:1.42em}
+.step-markdown .lp-h3{font-size:1.23em}
+.step-markdown .lp-strong{font-weight:750}
+.step-markdown .lp-em{font-style:italic}
+.step-markdown .lp-code{font-family:ui-monospace,monospace;background:#f0ece5;border-radius:.2em}
+.step-markdown .lp-link,.step-markdown .lp-tag{color:#246c58}
+.step-markdown .lp-link{text-decoration:underline}
+.step-markdown .lp-quote,.step-markdown .lp-callout{border-left:3px solid var(--callout-ink,#c5bbaa);padding-inline:.7em}
+.callout-warning{--callout-ink:#92480d;--callout-bg:#fff1d7}
+.callout-note{--callout-ink:#315e8c;--callout-bg:#edf3fb}
+.callout-tip{--callout-ink:#247154;--callout-bg:#eaf6ef}
+.step-markdown .lp-callout,.markdown blockquote[class^="callout-"]{background:var(--callout-bg)}
+.markdown blockquote[class^="callout-"]{border-left:3px solid var(--callout-ink);padding:.65em 1em;margin:1em 0;border-radius:4px}
+.step-markdown .lp-callout-title,.markdown blockquote[class^="callout-"]>h6:first-child{font-size:1em;color:var(--callout-ink);font-weight:750;margin:0}
+.step-markdown .lp-callout-title .lp-tag{color:inherit}
+.step-markdown[data-mode="source"] .cm-scroller{font-family:ui-monospace,Consolas,monospace}
+#figma-editor input.lp-cell-input{display:block;width:100%;min-width:3em;padding:.15em .35em;border:1px solid #a39a8a;background:white;font:inherit}

@@ -211,6 +211,7 @@ function renderEditor() {
       render();
       requestAnimationFrame(() => app.querySelector('[aria-pressed="true"]')?.focus());
     },
+    readBody: body => api("/markdown", "POST", { body }),
     changeBody: (id, body) => {
       state.current.steps.find(step => step.id === id).body = body;
       dirty();
@@ -344,15 +345,39 @@ app.addEventListener("input", event => {
 app.addEventListener("change", event => {
   const field = event.target;
   if (field.dataset.field !== "image" || !field.files.length) return;
-  const file = new FormData();
-  file.append("image", field.files[0]);
+  const files = [...field.files];
   field.value = "";
-  const editor = stepEditor(field);
-  run(async () => {
-    const id = (await api("/images", "POST", file)).id;
-    insertBlock(editor, `![Описание изображения](/image/${id})`);
-  });
+  uploadStepImages(stepEditor(field), files);
 });
+
+function uploadStepImages(editor, files) {
+  run(async () => {
+    for (const file of files) {
+      const data = new FormData();
+      data.append("image", file);
+      const id = (await api("/images", "POST", data)).id;
+      if (!insertBlock(editor, `![Описание изображения](/image/${id})`)) break;
+    }
+    requestAnimationFrame(() => editor.focus());
+  });
+}
+
+function insertTransferredImages(event) {
+  const host = event.target.closest(".step-markdown");
+  const transfer = event.clipboardData || event.dataTransfer;
+  if (!host || !transfer) return;
+  const files = [...transfer.files].filter(file => file.type.startsWith("image/"));
+  if (!files.length) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.type === "drop") host.stepEditor.moveToPoint(event.clientX, event.clientY);
+  uploadStepImages(host.stepEditor, files);
+}
+app.addEventListener("paste", insertTransferredImages, true);
+app.addEventListener("drop", insertTransferredImages, true);
+app.addEventListener("dragover", event => {
+  if (event.target.closest(".step-markdown") && event.dataTransfer.types.includes("Files")) event.preventDefault();
+}, true);
 
 const markdownFormats = {
   bold: ["**", "**", "жирный текст"],
@@ -371,6 +396,10 @@ function stepEditor(control) {
 
 function formatMarkdown(control, format) {
   const field = stepEditor(control);
+  if (format === "bold" || format === "italic") {
+    field.toggleEmphasis(format === "bold");
+    return;
+  }
   const [prefix, suffix, placeholder, line] = markdownFormats[format];
   let { from: start, to: end } = field.selection;
   if (line && start > 0) start = field.value.lastIndexOf("\n", start - 1) + 1;
@@ -455,12 +484,17 @@ function confirmPublication() {
 }
 
 function applySavedDraft(draft) {
+  const keepEditor = state.panel === "draft" && state.current.title === draft.title &&
+    state.current.steps.every((step, i) => step.title === draft.steps[i]?.title);
   state.current = draft;
   state.dirty = false;
   Object.assign(state.drafts.find(item => item.id === draft.id), {
     title: draft.title, steps: draft.steps.length, published: state.releases.length > 0
   });
-  render();
+  if (keepEditor) {
+    app.querySelector("#draft-status").textContent = "Черновик сохранён";
+    app.querySelector('[data-action="save"]').disabled = true;
+  } else render();
 }
 
 document.addEventListener("click", event => {
@@ -470,6 +504,7 @@ document.addEventListener("click", event => {
   const control = event.target.closest("[data-action]");
   if (!control) return;
   const action = control.dataset.action;
+  const restoreCaret = action === "save" && document.activeElement.closest(".step-markdown");
   if (action.startsWith("format-")) {
     formatMarkdown(control, action.slice(7));
     return;
@@ -570,6 +605,7 @@ document.addEventListener("click", event => {
       confirmPublication();
     } else if (action === "save") {
       applySavedDraft(await api(`/drafts/${key}`, "PUT", state.current));
+      if (restoreCaret) requestAnimationFrame(() => app.querySelector(".step-markdown")?.stepEditor.focus());
       notify("Черновик сохранён.");
     }
   });

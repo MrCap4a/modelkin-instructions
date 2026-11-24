@@ -8,7 +8,7 @@ use axum::{
 };
 use image::{DynamicImage, ImageDecoder, ImageFormat, ImageReader, Limits};
 use minijinja::context;
-use pulldown_cmark::{Event, Parser, html};
+use pulldown_cmark::{Event, Parser, Tag, html};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::{FromRow, PgConnection, types::Json as DbJson};
@@ -78,6 +78,7 @@ struct LevelChange {
 pub fn admin_routes() -> Router<App> {
     Router::new()
         .route("/state", get(state))
+        .route("/markdown", post(read_step_markdown))
         .route("/levels", post(add_level))
         .route("/levels/{id}", post(change_level).put(edit_level))
         .route("/drafts", post(create))
@@ -359,14 +360,88 @@ fn visible<'a>(steps: &'a [Step], levels: &[Level], selected: &Level) -> Vec<&'a
 }
 
 fn render_markdown(body: &str) -> String {
-    let events =
-        Parser::new_ext(body, pulldown_cmark::Options::ENABLE_TABLES).map(|event| match event {
+    let options = pulldown_cmark::Options::ENABLE_TABLES;
+    let mut document = String::with_capacity(body.len());
+    let mut quotes = HashMap::new();
+    let mut copied = 0;
+    // Look for callouts only at parsed quote boundaries, never inside code samples.
+    for (event, span) in Parser::new_ext(body, options).into_offset_iter() {
+        if !matches!(event, Event::Start(Tag::BlockQuote(_))) || span.start < copied {
+            continue;
+        }
+        let line = body[span.clone()].lines().next().unwrap_or("");
+        let Some(first) = line.strip_prefix('>') else {
+            continue;
+        };
+        let Some((kind, title)) = first
+            .trim_start()
+            .strip_prefix("[!")
+            .and_then(|s| s.split_once(']'))
+        else {
+            continue;
+        };
+        let (class, fallback) = match kind.to_ascii_lowercase().as_str() {
+            "warning" => ("callout-warning", "Предупреждение"),
+            "note" => ("callout-note", "Примечание"),
+            "tip" => ("callout-tip", "Совет"),
+            _ => continue,
+        };
+        document.push_str(&body[copied..span.start]);
+        quotes.insert(document.len(), class);
+        document.push_str("> ###### ");
+        document.push_str(if title.trim().is_empty() {
+            fallback
+        } else {
+            title.trim()
+        });
+        copied = span.start + line.len();
+    }
+    document.push_str(&body[copied..]);
+    let events = Parser::new_ext(&document, options)
+        .into_offset_iter()
+        .map(|(event, span)| match event {
+            Event::Start(Tag::BlockQuote(_)) if quotes.contains_key(&span.start) => {
+                Event::Html(format!("<blockquote class=\"{}\">", quotes[&span.start]).into())
+            }
+            Event::SoftBreak => Event::HardBreak,
             Event::Html(text) | Event::InlineHtml(text) => Event::Text(text),
             other => other,
         });
     let mut rendered = String::new();
     html::push_html(&mut rendered, events);
-    ammonia::clean(&rendered)
+    ammonia::Builder::default()
+        .add_allowed_classes(
+            "blockquote",
+            ["callout-tip", "callout-note", "callout-warning"],
+        )
+        .clean(&rendered)
+        .to_string()
+}
+
+#[derive(Deserialize)]
+struct MarkdownBody {
+    body: String,
+}
+
+#[cfg(test)]
+#[test]
+fn renders_obsidian_callouts_without_changing_code_examples() {
+    let source = ">[!warning] #важно\n> **Один**\n> Два\n> - Три\n\n> [!tip] #кстати\n> Совет\n\n> [!note]\n> Текст\n\n```md\n> [!warning] Пример\n```";
+    let html = render_markdown(source);
+    assert!(html.contains("<blockquote class=\"callout-warning\">"));
+    assert!(html.contains("<h6>#важно</h6>"));
+    assert!(html.contains("<strong>Один</strong><br"));
+    assert!(html.contains("<li>Три</li>"));
+    assert!(html.contains("class=\"callout-tip\"") && html.contains("<h6>Примечание</h6>"));
+    assert!(html.contains("[!warning] Пример"));
+    assert!(!render_markdown("> [!tip] <b>текст</b>").contains("<b>"));
+}
+
+async fn read_step_markdown(Json(MarkdownBody { body }): Json<MarkdownBody>) -> Api<Json<String>> {
+    if body.chars().count() > 50_000 {
+        return Err(Error::BAD);
+    }
+    Ok(Json(render_markdown(&body)))
 }
 
 async fn preview(

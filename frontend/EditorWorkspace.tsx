@@ -31,6 +31,7 @@ type WorkspaceProps = {
   preview: (level: number) => Promise<Step[]>
   changeLevel: (id: string, level: number) => void
   changeBody: (id: string, body: string) => void
+  readBody: (body: string) => Promise<string>
 }
 
 const formats = [['B','bold','Жирный'], ['I','italic','Курсив'], ['H₂','heading','Заголовок'],
@@ -57,7 +58,7 @@ function Icon({
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>{paths[name]}</svg>
 }
 
-export function EditorWorkspace({levels, draft, selected, dirty, published, preview, changeLevel, changeBody}: WorkspaceProps) {
+export function EditorWorkspace({levels, draft, selected, dirty, published, preview, changeLevel, changeBody, readBody}: WorkspaceProps) {
   const [steps, setSteps] = useState(draft.steps)
   const [title, setTitle] = useState(draft.title)
   const selectable = levels.filter(level => !level.archived)
@@ -179,14 +180,14 @@ export function EditorWorkspace({levels, draft, selected, dirty, published, prev
                 <span className="text-[10px] font-medium text-black/35">Markdown</span>
               </div>
               <div className="mt-2 overflow-hidden rounded-xl border border-black/15 bg-white">
-                <div className="flex flex-wrap items-center gap-1 border-b border-black/10 bg-[#f8f6f0] px-2 py-2">
+                <div className="step-format-bar flex flex-wrap items-center gap-1 border-b border-black/10 bg-[#f8f6f0] px-2 py-2">
                   {formats.map(([tool, action, label]) => <button key={tool} data-action={`format-${action}`} aria-label={label} className="h-7 min-w-7 rounded-md px-1.5 text-xs font-semibold text-black/55 hover:bg-white">{tool}</button>)}
                   <span className="mx-1 h-5 w-px bg-black/10" />
                   <button data-action="choose-image" className="flex h-7 items-center gap-1 rounded-md px-2 text-xs font-semibold text-black/55 hover:bg-white"><Icon name="image" className="h-4 w-4" /> Фото</button>
                   <button data-action="table" className="flex h-7 items-center gap-1 rounded-md px-2 text-xs font-semibold text-black/55 hover:bg-white"><Icon name="table" className="h-4 w-4" /> Таблица</button>
                 </div>
                 <input type="file" hidden data-field="image" accept="image/jpeg,image/png,image/webp,image/gif" />
-                <MarkdownEditor key={step.id} initialValue={step.body} onChange={value => changeBody(step.id, value)} />
+                <MarkdownEditor key={step.id} initialValue={step.body} readBody={readBody} onChange={value => changeBody(step.id, value)} />
               </div>
               {step.image && <div className="legacy-image mt-4">
                 <img className="preview-image" src={`/image/${step.image}`} alt="Иллюстрация к шагу" />
