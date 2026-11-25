@@ -329,6 +329,14 @@ async fn import_and_publish() {
         published["releases"][0]["links"].as_array().unwrap().len(),
         2
     );
+    let shared = published["releases"][0]["path"].as_str().unwrap();
+    assert_eq!(published["releases"][1]["path"], shared);
+    assert_eq!(shared, format!("/guide/{:032}", 1));
+    let first = reader.text(shared).await;
+    assert!(first.contains("Advanced step") && !first.contains("Common step"));
+    assert!(first.contains("?level=1"));
+    let switched = reader.text(&format!("{shared}?level=1&page=2")).await;
+    assert!(switched.contains("Before image") && switched.contains("After image"));
     let new_hard = published["releases"][0]["links"][0]["path"]
         .as_str()
         .unwrap();

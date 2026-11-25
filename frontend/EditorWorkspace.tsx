@@ -27,7 +27,7 @@ type WorkspaceProps = {
   draft: {title: string; steps: Step[]}
   selected: string | null
   dirty: boolean
-  links: { name: string; path: string }[]
+  publicPath?: string
   published: boolean
   preview: (level: number) => Promise<Step[]>
   changeLevel: (id: string, level: number) => void
@@ -59,7 +59,7 @@ function Icon({
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>{paths[name]}</svg>
 }
 
-export function EditorWorkspace({levels, draft, selected, dirty, published, links = [], preview, changeLevel, changeBody, readBody}: WorkspaceProps) {
+export function EditorWorkspace({levels, draft, selected, dirty, published, publicPath, preview, changeLevel, changeBody, readBody}: WorkspaceProps) {
   const [steps, setSteps] = useState(draft.steps)
   const [title, setTitle] = useState(draft.title)
   const selectable = levels.filter(level => !level.archived)
@@ -234,17 +234,11 @@ export function EditorWorkspace({levels, draft, selected, dirty, published, link
             <Icon name="plus" className="h-4 w-4" /> Добавить уровень
           </button>
           <div className="mt-7 rounded-xl bg-[#e9eee8] p-4">
-            <p className="text-xs font-bold text-[#203b36]">Постоянные ссылки</p>
-            {links.length ? (
-              <ul className="mt-2 space-y-2">
-                {links.map(link => (
-                  <li key={link.path} className="flex items-center justify-between gap-2 text-xs">
-                    <a href={link.path} target="_blank" rel="noopener" className="underline">{link.name}</a>
-                    <button type="button" data-copy={link.path} aria-label={`Копировать ссылку: ${link.name}`}>Копировать</button>
-                  </li>
-                ))}
-              </ul>
-            ) : <p className="mt-1 text-[11px] leading-5 text-[#203b36]/60">После публикации у каждого уровня появится своя ссылка. Обновления откроются по ней же.</p>}
+            <p className="text-xs font-bold text-[#203b36]">Постоянная ссылка</p>
+            {publicPath ? <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <a href={publicPath} target="_blank" rel="noopener" className="underline">Открыть инструкцию</a>
+              <button type="button" data-copy={publicPath}>Копировать ссылку</button>
+            </div> : <p className="mt-1 text-[11px] leading-5 text-[#203b36]/60">После публикации здесь появится ссылка на инструкцию.</p>}
           </div>
         </aside>
       </div>

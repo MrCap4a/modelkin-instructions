@@ -327,3 +327,7 @@ h1{font-size:clamp(1.3rem,2.5vw,1.88rem)}h2{font-size:1.12rem}
 @media(max-width:1050px){.design-editor-grid{grid-template-columns:minmax(165px,225px) minmax(0,1fr)}.step-settings{grid-column:2;min-height:auto}.step-outline{grid-row:span 2;max-height:none}}
 @media(max-width:700px){.top{height:auto;padding-top:10px;gap:8px}.top .nav-button{min-height:40px}.design-editor-grid{grid-template-columns:minmax(0,1fr)}.step-outline,.step-settings{grid-column:auto;grid-row:auto;min-height:0}.step-outline{max-height:215px}.editor-heading-line{gap:8px}.reader-workspace{margin-top:16px}}
 @media(max-width:420px){#account-label{display:none}.brand small{font-size:.65rem}}
+
+.reader-levels{display:flex;flex-wrap:wrap;gap:10px}
+.reader-levels .tag{text-decoration:none}
+.reader-levels [aria-current]{outline:2px solid currentColor;outline-offset:2px}

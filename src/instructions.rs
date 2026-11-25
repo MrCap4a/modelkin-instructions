@@ -1,7 +1,7 @@
 use crate::{Api, App, Error, auth, missing_page, page};
 use axum::{
     Json, Router,
-    extract::{Multipart, Path, State},
+    extract::{Multipart, Path, Query, State},
     http::{StatusCode, header},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -476,6 +476,17 @@ async fn release_list(db: &mut PgConnection, draft: Draft) -> Api<Json<Value>> {
     let tokens: HashMap<i64,String> = sqlx::query_as(
         "SELECT DISTINCT ON (l.level_id) l.level_id,l.token FROM links l JOIN releases r ON r.id=l.release_id WHERE r.draft_id=$1 ORDER BY l.level_id,r.id"
     ).bind(draft.id).fetch_all(db).await?.into_iter().collect();
+    // Anchor the shared URL to the first publication even if levels are reordered or archived.
+    let public_path = rows
+        .first()
+        .and_then(|(_, snapshot)| {
+            snapshot
+                .levels
+                .iter()
+                .filter(|level| !level.archived)
+                .find_map(|level| tokens.get(&level.id))
+        })
+        .map(|token| format!("/guide/{token}"));
     let releases = rows
         .into_iter()
         .enumerate()
@@ -494,7 +505,7 @@ async fn release_list(db: &mut PgConnection, draft: Draft) -> Api<Json<Value>> {
                     }))
                 })
                 .collect::<Vec<_>>();
-            json!({"number":i+1,"links":links})
+            json!({"number":i+1,"links":links,"path":public_path})
         })
         .collect::<Vec<_>>();
     Ok(Json(json!({"draft":draft,"releases":releases})))
@@ -656,18 +667,37 @@ pub async fn image(State(app): State<App>, Path(key): Path<String>) -> Api<Respo
         .unwrap_or_else(missing_page))
 }
 
+#[derive(Deserialize, Default)]
+pub struct ReaderOptions {
+    level: Option<i64>,
+    page: Option<usize>,
+}
+
+pub async fn guide(
+    State(app): State<App>,
+    Path(token): Path<String>,
+    Query(options): Query<ReaderOptions>,
+) -> Api<Response> {
+    read(app, token, options.page.unwrap_or(1), Some(options)).await
+}
+
 pub async fn read_first(State(app): State<App>, Path(token): Path<String>) -> Api<Response> {
-    read(app, token, 1).await
+    read(app, token, 1, None).await
 }
 
 pub async fn read_page(
     State(app): State<App>,
     Path((token, index)): Path<(String, usize)>,
 ) -> Api<Response> {
-    read(app, token, index).await
+    read(app, token, index, None).await
 }
 
-async fn read(app: App, token: String, index: usize) -> Api<Response> {
+async fn read(
+    app: App,
+    token: String,
+    index: usize,
+    options: Option<ReaderOptions>,
+) -> Api<Response> {
     if !(token.len() == 32
         && token
             .bytes()
@@ -679,7 +709,6 @@ async fn read(app: App, token: String, index: usize) -> Api<Response> {
         "SELECT latest.snapshot,l.level_id FROM links l
          JOIN releases original ON original.id=l.release_id
          CROSS JOIN LATERAL (SELECT snapshot FROM releases WHERE draft_id=original.draft_id
-             AND snapshot->'levels' @> jsonb_build_array(jsonb_build_object('id',l.level_id))
              ORDER BY id DESC LIMIT 1) latest WHERE l.token=$1",
     )
     .bind(&token)
@@ -688,7 +717,18 @@ async fn read(app: App, token: String, index: usize) -> Api<Response> {
     let Some((DbJson(snapshot), selected)) = found else {
         return Ok(missing_page());
     };
-    render_reader(snapshot, selected, index, format!("/read/{token}"), false)
+    let level = if let Some(options) = options {
+        let active = || snapshot.levels.iter().filter(|level| !level.archived);
+        options
+            .level
+            .and_then(|id| active().find(|level| level.id == id))
+            .or_else(|| active().next())
+            .map(|level| level.id)
+            .unwrap_or(selected)
+    } else {
+        selected
+    };
+    render_reader(snapshot, level, index, format!("/guide/{token}"), false)
 }
 
 async fn read_archive(
@@ -727,7 +767,19 @@ fn render_reader(
         return Ok(missing_page());
     }
     let step = visible.get(index - 1).copied();
+    let choices = snapshot.levels.iter().filter(|item| !item.archived || item.id == selected).map(|item| {
+        let url = if archived {
+            format!("{}/{}/1", base.rsplit_once('/').unwrap().0, item.id)
+        } else { format!("{base}?level={}", item.id) };
+        json!({"id":item.id,"name":item.name,"color":item.color,"ink":tag_ink(&item.color),"url":url})
+    }).collect::<Vec<_>>();
+    let page_prefix = if archived {
+        format!("{base}/")
+    } else {
+        format!("{base}?level={selected}&page=")
+    };
     Ok(page(context! {
+        choices => choices,
         reader => true,
         title => snapshot.title,
         level => level,
@@ -736,7 +788,7 @@ fn render_reader(
         body => step.map(|step| render_markdown(&step.body)).unwrap_or_default(),
         page => index,
         count => visible.len(),
-        reader_base => base,
+        reader_base => page_prefix,
         archived => archived,
         outline => visible.iter().map(|step| &step.title).collect::<Vec<_>>(),
     }))

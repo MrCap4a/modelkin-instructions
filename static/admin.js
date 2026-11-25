@@ -166,22 +166,18 @@ function publicationView() {
     <h1>Публикация и версии</h1>
     <div class="publish-banner">
       <div><h2>Версия ${(latest?.number || 0) + 1}</h2><p class="muted">${latest ?
-        `Сейчас читатели видят версию ${latest.number}. После публикации ссылки откроют новую версию.` :
-        "После публикации появятся постоянные ссылки по уровням сложности."}</p></div>
+        `Сейчас читатели видят версию ${latest.number}. После публикации ссылка откроет новую версию.` :
+        "После публикации появится постоянная ссылка на инструкцию."}</p></div>
       <div class="controls">
         ${button("Предпросмотр", "preview", "quiet", !state.current.steps.length)}
         ${button("Опубликовать", "publish-review", "primary", !state.current.steps.length)}
       </div>
     </div>
     <div class="publication-grid">
-      <section class="card"><h2>Ссылки для читателей</h2><p class="muted">Открываются без входа</p>
-      ${latest?.links.map(link => `<div class="link-row">
-        <div>${tag(link)}<div class="muted">Шагов: ${link.steps}</div></div>
-        <div class="controls"><button class="quiet" data-copy="${link.path}">Копировать</button>
-        <a class="button quiet" href="${link.path}" target="_blank" rel="noopener">Открыть</a></div>
-      </div>`).join("") || '<p class="muted">Ссылки появятся после первой публикации.</p>'}
+      <section class="card"><h2>Ссылка для читателей</h2><p class="muted">Читатель выбирает сложность без входа</p>
+      ${latest?.path ? `<div class="controls"><button class="quiet" data-copy="${latest.path}">Копировать ссылку</button><a class="button quiet" target="_blank" rel="noopener" href="${latest.path}">Открыть инструкцию</a></div>` : '<p class="muted">Ссылка появится после первой публикации.</p>'}
       </section>
-      <aside class="publication-note"><h2>Одна ссылка.<br>Новая версия.</h2><p>При обновлении инструкции ссылки остаются прежними. Старые версии доступны в истории публикаций.</p></aside>
+      <aside class="publication-note"><h2>Одна ссылка.<br>Новая версия.</h2><p>При обновлении инструкции ссылка остаётся прежней. Старые версии доступны в истории публикаций.</p></aside>
     </div>
     <section class="card history"><h2>История публикаций</h2>
       ${state.releases.map((release,index) => `<details class="history-version">
@@ -203,7 +199,7 @@ function renderEditor() {
     selected: state.selected,
     dirty: state.dirty,
     published: state.releases.length > 0,
-    links: state.releases[0]?.links ?? [],
+    publicPath: state.releases[0]?.path,
     preview: async level => (await api(`/drafts/${state.current.id}/preview`, "POST",
       { steps: state.current.steps, level })).steps,
     changeLevel: (id, level) => {
@@ -497,8 +493,8 @@ function confirmPublication() {
     return;
   }
   const panel = dialog("Опубликовать инструкцию?", `<div class="stack">
-    <p>Черновик сохранится, а читателям станет доступна новая версия. После публикации вы получите ссылки по уровням сложности.</p>
-    <div><button class="primary" id="confirm-publish">Опубликовать и получить ссылки</button></div>
+    <p>Черновик сохранится, а читателям станет доступна новая версия. После публикации вы получите ссылку на инструкцию.</p>
+    <div><button class="primary" id="confirm-publish">Опубликовать и получить ссылку</button></div>
   </div>`);
   panel.querySelector("#confirm-publish").addEventListener("click", () => {
     panel.close();
@@ -506,7 +502,7 @@ function confirmPublication() {
       const result = await api(`/drafts/${state.current.id}/releases`, "POST", state.current);
       state.releases = result.releases;
       applySavedDraft(result.draft);
-      notify("Версия опубликована. Ссылки готовы.");
+      notify("Версия опубликована. Ссылка готова.");
     });
   });
 }

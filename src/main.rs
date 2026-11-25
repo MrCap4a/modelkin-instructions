@@ -73,8 +73,9 @@ fn missing_page() -> Response {
 }
 
 async fn headers(request: Request, next: Next) -> Response {
-    let private =
-        request.uri().path().starts_with("/api/") || request.uri().path().starts_with("/read/");
+    let private = request.uri().path().starts_with("/api/")
+        || request.uri().path().starts_with("/read/")
+        || request.uri().path().starts_with("/guide/");
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
     headers.insert(
@@ -176,6 +177,7 @@ fn router(app: App) -> Router {
             }),
         )
         .route("/image/{key}", get(instructions::image))
+        .route("/guide/{token}", get(instructions::guide))
         .route("/read/{token}", get(instructions::read_first))
         .route("/read/{token}/{page}", get(instructions::read_page))
         .nest(
