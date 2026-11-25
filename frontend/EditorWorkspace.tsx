@@ -127,6 +127,7 @@ export function EditorWorkspace({levels, draft, selected, dirty, published, publ
             <button onClick={() => setPreviewOpen(true)} disabled={!steps.length} className="flex h-10 items-center gap-2 rounded-xl border border-black/15 bg-white px-4 text-sm font-semibold shadow-sm transition hover:-translate-y-0.5">
               <Icon name="eye" className="h-4 w-4" /> Предпросмотр
             </button>
+            {published && <button data-action="history" className="rounded-xl border border-black/15 px-4 py-2 text-sm">История</button>}
             <button data-action="publication" disabled={!steps.length} className="h-10 rounded-xl bg-[#f05a39] px-5 text-sm font-bold text-white shadow-[0_3px_0_#b83f26] transition hover:-translate-y-0.5 active:translate-y-0 active:shadow-none">
               Опубликовать
             </button>

@@ -177,6 +177,7 @@ fn router(app: App) -> Router {
             }),
         )
         .route("/image/{key}", get(instructions::image))
+        .route("/version/{key}", get(instructions::version))
         .route("/guide/{token}", get(instructions::guide))
         .route("/read/{token}", get(instructions::read_first))
         .route("/read/{token}/{page}", get(instructions::read_page))

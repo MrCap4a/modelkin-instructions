@@ -182,7 +182,13 @@ function publicationView() {
     <section class="card history"><h2>История публикаций</h2>
       ${state.releases.map((release,index) => `<details class="history-version">
         <summary>Версия ${release.number} <span class="muted">${index ? "В архиве" : "Текущая публикация"}</span></summary>
-        <div class="controls">${release.links.map(link => `<a class="button quiet" href="${link.archive}" target="_blank" rel="noopener">${escapeHtml(link.name)}</a>`).join("")}</div>
+        <div class="stack" data-release="${release.id}">
+          <div class="controls"><a class="button quiet" href="${release.version_path}" target="_blank" rel="noopener">Открыть версию</a>
+          <button class="quiet" data-copy="${release.version_path}">Копировать ссылку на версию</button>
+          ${button("Восстановить весь черновик","restore-version","quiet")}</div>
+          <ol>${release.steps.map((step,i) => `<li class="link-row"><span>${i+1}. ${escapeHtml(step.title || "Без заголовка")}</span>
+            <button class="quiet" data-action="restore-step" data-source="${escapeHtml(step.id)}">Добавить в черновик</button></li>`).join("")}</ol>
+        </div>
       </details>`).join("") || '<p class="muted">Версий пока нет.</p>'}
     </section>
   </section>`;
@@ -214,8 +220,27 @@ function renderEditor() {
       dirty();
     }
   });
+  for (const row of app.querySelectorAll('[data-action="select-step"]')) {
+    if (localStorage.getItem(historyMark(row.dataset.step))) row.dataset.restored = "true";
+  }
   updateSaveControls();
 }
+
+function historyMark(step) {
+  return `modelkin:history:${state.current.id}:${step}`;
+}
+
+function clearHistoryMark(event) {
+  const step = event.target.closest("[data-step]")?.dataset.step;
+  if (!step || !state.current) return;
+  const row = app.querySelector(`[data-action="select-step"][data-step="${CSS.escape(step)}"][data-restored]`);
+  if (row) {
+    delete row.dataset.restored;
+    localStorage.removeItem(historyMark(step));
+  }
+}
+app.addEventListener("pointerdown", clearHistoryMark, true);
+app.addEventListener("keydown", clearHistoryMark, true);
 
 function render() {
   window.unmountFigmaEditor();
@@ -558,7 +583,19 @@ document.addEventListener("click", event => {
   run(async () => {
     const step = sourceStep(control);
     const key = state.current?.id;
-    if (action === "logout") {
+    if (action === "restore-version" || action === "restore-step") {
+      const whole = action === "restore-version";
+      if (whole && !confirm("Заменить название и все шаги черновика этой версией? Текущая публикация останется доступна читателям.")) return;
+      const release = control.closest("[data-release]").dataset.release;
+      const restored = await api(`/drafts/${key}/history/${release}`, "POST", {draft:state.current, step:control.dataset.source});
+      state.selected = whole ? restored.steps[0]?.id : restored.steps.at(-1).id;
+      if (!whole) localStorage.setItem(historyMark(state.selected), "1");
+      applySavedDraft(restored);
+      state.panel = "draft";
+      render();
+      app.querySelector('[data-restored][aria-current="step"]')?.scrollIntoView({block:"nearest"});
+      notify(whole ? "Версия восстановлена в черновике." : "Шаг добавлен в конец черновика.");
+    } else if (action === "logout") {
       await signOut();
     } else if (action === "levels" || action === "library") {
       if (state.current && !canLeave()) return;
@@ -584,9 +621,10 @@ document.addEventListener("click", event => {
     } else if (action.startsWith("filter-")) {
       state.filter = action.slice(7);
       render();
-    } else if (action === "publication" || action === "editor") {
-      state.panel = action === "publication" ? "publication" : "draft";
+    } else if (action === "publication" || action === "history" || action === "editor") {
+      state.panel = action === "editor" ? "draft" : "publication";
       render();
+      if (action === "history") app.querySelector(".history").scrollIntoView({block:"start"});
     } else if (action === "select-step") {
       state.selected = step.id;
       render();

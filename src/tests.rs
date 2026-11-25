@@ -384,6 +384,53 @@ async fn import_and_publish() {
             .await
             .contains("Second &amp; &lt;version&gt;")
     );
+    let previous = &published["releases"][1];
+    let pinned = previous["version_path"].as_str().unwrap();
+    assert!(reader.text(pinned).await.contains("Original title"));
+    assert!(
+        reader
+            .text(&format!("{pinned}?level=2&page=2"))
+            .await
+            .contains("Medium step")
+    );
+    let restore_url = format!("/api/drafts/8/history/{}", previous["id"]);
+    let appended = editor
+        .json(
+            Method::POST,
+            &restore_url,
+            Some(json!({"draft":published["draft"],"step":previous["steps"][0]["id"]})),
+            StatusCode::OK,
+        )
+        .await;
+    let appended_steps = appended["steps"].as_array().unwrap();
+    assert_eq!(
+        appended_steps.len(),
+        published["draft"]["steps"].as_array().unwrap().len() + 1
+    );
+    assert_ne!(
+        appended_steps.last().unwrap()["id"],
+        previous["steps"][0]["id"]
+    );
+    assert_eq!(
+        appended_steps.last().unwrap()["title"],
+        previous["steps"][0]["title"]
+    );
+    let reverted = editor
+        .json(
+            Method::POST,
+            &restore_url,
+            Some(json!({"draft":appended})),
+            StatusCode::OK,
+        )
+        .await;
+    assert_eq!(reverted["title"], "Original title");
+    assert_eq!(reverted["steps"].as_array().unwrap().len(), 3);
+    assert!(
+        reader
+            .text(shared)
+            .await
+            .contains("Second &amp; &lt;version&gt;")
+    );
     let archived = published["releases"][1]["links"][0]["archive"]
         .as_str()
         .unwrap();

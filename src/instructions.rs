@@ -88,6 +88,7 @@ pub fn admin_routes() -> Router<App> {
         )
         .route("/drafts/{id}/preview", post(preview))
         .route("/drafts/{id}/releases", get(releases).post(publish))
+        .route("/drafts/{id}/history/{release}", post(restore_release))
         .route("/archive/{release}/{level}/{page}", get(read_archive))
         .route("/images", post(upload))
 }
@@ -481,8 +482,8 @@ async fn preview(
 }
 
 async fn release_list(db: &mut PgConnection, draft: Draft) -> Api<Json<Value>> {
-    let rows: Vec<(i64, DbJson<Snapshot>)> =
-        sqlx::query_as("SELECT id,snapshot FROM releases WHERE draft_id=$1 ORDER BY id")
+    let rows: Vec<(i64, String, DbJson<Snapshot>)> =
+        sqlx::query_as("SELECT id,share_key,snapshot FROM releases WHERE draft_id=$1 ORDER BY id")
             .bind(draft.id)
             .fetch_all(&mut *db)
             .await?;
@@ -492,7 +493,7 @@ async fn release_list(db: &mut PgConnection, draft: Draft) -> Api<Json<Value>> {
     // Anchor the shared URL to the first publication even if levels are reordered or archived.
     let public_path = rows
         .first()
-        .and_then(|(_, snapshot)| {
+        .and_then(|(_, _, snapshot)| {
             snapshot
                 .levels
                 .iter()
@@ -504,7 +505,7 @@ async fn release_list(db: &mut PgConnection, draft: Draft) -> Api<Json<Value>> {
         .into_iter()
         .enumerate()
         .rev()
-        .map(|(i, (id, DbJson(snapshot)))| {
+        .map(|(i, (id, key, DbJson(snapshot)))| {
             let links = snapshot
                 .levels
                 .iter()
@@ -518,10 +519,71 @@ async fn release_list(db: &mut PgConnection, draft: Draft) -> Api<Json<Value>> {
                     }))
                 })
                 .collect::<Vec<_>>();
-            json!({"number":i+1,"links":links,"path":public_path})
+            json!({"id":id,"number":i+1,"links":links,"path":public_path,"version_path":format!("/version/{key}"),
+                "steps":snapshot.steps.iter().map(|step| json!({"id":step.id,"title":step.title})).collect::<Vec<_>>()})
         })
         .collect::<Vec<_>>();
     Ok(Json(json!({"draft":draft,"releases":releases})))
+}
+
+#[derive(Deserialize)]
+struct RestoreInput {
+    draft: DraftInput,
+    step: Option<String>,
+}
+
+async fn restore_release(
+    State(app): State<App>,
+    Path((id, release)): Path<(i64, i64)>,
+    Json(input): Json<RestoreInput>,
+) -> Api<Json<Draft>> {
+    let mut db = app.db.begin().await?;
+    sqlx::query("LOCK TABLE levels IN SHARE MODE")
+        .execute(&mut *db)
+        .await?;
+    let current = draft(&mut db, id, true).await?;
+    if current.revision != input.draft.revision {
+        return Err(Error(
+            StatusCode::CONFLICT,
+            "Черновик изменился в другой вкладке. Обновите страницу.",
+        ));
+    }
+    let DbJson(snapshot): DbJson<Snapshot> =
+        sqlx::query_scalar("SELECT snapshot FROM releases WHERE draft_id=$1 AND id=$2")
+            .bind(id)
+            .bind(release)
+            .fetch_optional(&mut *db)
+            .await?
+            .ok_or(Error::NOT_FOUND)?;
+    let (title, steps) = if let Some(step_id) = input.step {
+        if input.draft.steps.len() >= 250 {
+            return Err(Error(StatusCode::BAD_REQUEST, "В черновике уже 250 шагов."));
+        }
+        let levels = levels(&mut db).await?;
+        let mut draft = save(&mut db, id, input.draft, &levels).await?;
+        let mut step = snapshot
+            .steps
+            .into_iter()
+            .find(|step| step.id == step_id)
+            .ok_or(Error::NOT_FOUND)?;
+        step.id = sqlx::query_scalar("SELECT gen_random_uuid()::text")
+            .fetch_one(&mut *db)
+            .await?;
+        draft.steps.0.push(step);
+        (draft.title, draft.steps.0)
+    } else {
+        (snapshot.title, snapshot.steps)
+    };
+    let restored = sqlx::query_as(
+        "UPDATE drafts SET title=$2,steps=$3,revision=revision+1 WHERE id=$1 RETURNING *",
+    )
+    .bind(id)
+    .bind(title)
+    .bind(DbJson(steps))
+    .fetch_one(&mut *db)
+    .await?;
+    db.commit().await?;
+    Ok(Json(restored))
 }
 
 async fn releases(State(app): State<App>, Path(id): Path<i64>) -> Api<Json<Value>> {
@@ -688,6 +750,37 @@ pub struct ReaderOptions {
     page: Option<usize>,
 }
 
+pub async fn version(
+    State(app): State<App>,
+    Path(key): Path<String>,
+    Query(options): Query<ReaderOptions>,
+) -> Api<Response> {
+    let snapshot: Option<DbJson<Snapshot>> =
+        sqlx::query_scalar("SELECT snapshot FROM releases WHERE share_key=$1")
+            .bind(&key)
+            .fetch_optional(&app.db)
+            .await?;
+    let Some(DbJson(snapshot)) = snapshot else {
+        return Ok(missing_page());
+    };
+    let mut active = snapshot.levels.iter().filter(|level| !level.archived);
+    let Some(level) = active
+        .clone()
+        .find(|level| Some(level.id) == options.level)
+        .or_else(|| active.next())
+        .map(|level| level.id)
+    else {
+        return Ok(missing_page());
+    };
+    render_reader(
+        snapshot,
+        level,
+        options.page.unwrap_or(1),
+        format!("/version/{key}"),
+        false,
+    )
+}
+
 pub async fn guide(
     State(app): State<App>,
     Path(token): Path<String>,
@@ -804,7 +897,7 @@ fn render_reader(
         page => index,
         count => visible.len(),
         reader_base => page_prefix,
-        archived => archived,
+        archived => archived || base.starts_with("/version/"),
         outline => visible.iter().map(|step| &step.title).collect::<Vec<_>>(),
     }))
 }

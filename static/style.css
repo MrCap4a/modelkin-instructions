@@ -331,3 +331,6 @@ h1{font-size:clamp(1.3rem,2.5vw,1.88rem)}h2{font-size:1.12rem}
 .reader-levels{display:flex;flex-wrap:wrap;gap:10px}
 .reader-levels .tag{text-decoration:none}
 .reader-levels [aria-current]{outline:2px solid currentColor;outline-offset:2px}
+
+#figma-editor [data-restored]{outline:2px solid #c26d1e;outline-offset:-2px;background:#fff1d7}
+#figma-editor [data-restored] .handle{color:#8d4a13}
