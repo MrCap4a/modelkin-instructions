@@ -203,6 +203,7 @@ function renderEditor() {
     selected: state.selected,
     dirty: state.dirty,
     published: state.releases.length > 0,
+    links: state.releases[0]?.links ?? [],
     preview: async level => (await api(`/drafts/${state.current.id}/preview`, "POST",
       { steps: state.current.steps, level })).steps,
     changeLevel: (id, level) => {
