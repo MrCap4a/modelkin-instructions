@@ -254,14 +254,21 @@ function draftProblem(draft) {
   return "";
 }
 
+function publicationProblem(draft) {
+  if (!draft.steps.length) return "Для публикации добавьте хотя бы один шаг.";
+  const index = draft.steps.findIndex(step => !(step.title.trim() || step.body.trim() || step.image));
+  return index < 0 ? "" : `Шаг ${index + 1} пуст. Для публикации добавьте заголовок, текст или изображение.`;
+}
+
 function updateSaveControls() {
   const warning = app.querySelector("#draft-error");
   if (!warning) return;
   const problem = draftProblem(state.current);
-  warning.hidden = !problem;
-  if (warning.textContent !== problem) warning.textContent = problem;
+  const message = problem || publicationProblem(state.current);
+  warning.hidden = !message;
+  if (warning.textContent !== message) warning.textContent = message;
   app.querySelector('[data-action="save"]').disabled = !state.dirty || !!problem;
-  app.querySelector('[data-action="publication"]').disabled = !state.current.steps.length || !!problem;
+  app.querySelector('[data-action="publication"]').disabled = !!message;
 }
 function canLeave() {
   return !state.dirty || confirm("Перейти без сохранения изменений?");
@@ -487,9 +494,9 @@ function tableDialog(field) {
 }
 
 function confirmPublication() {
-  if (!state.current.title.trim() || !state.current.steps.length ||
-      state.current.steps.some(step => !(step.title.trim() || step.body.trim() || step.image))) {
-    notify("Укажите название инструкции и заполните каждый шаг.", true);
+  const problem = draftProblem(state.current) || publicationProblem(state.current);
+  if (problem) {
+    notify(problem, true);
     return;
   }
   const panel = dialog("Опубликовать инструкцию?", `<div class="stack">
