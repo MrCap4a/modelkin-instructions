@@ -260,7 +260,7 @@ export function EditorWorkspace({levels, draft, selected, dirty, published, publ
               <div className="mb-10">
                 <span className="rounded-full px-3 py-1.5 text-xs font-bold" style={{ color: activePreview?.ink, backgroundColor: activePreview?.color }}>{activePreview?.name}</span>
                 <h2 className="font-display mt-4 text-4xl font-bold tracking-[-.03em]">{title}</h2>
-                <p className="mt-3 text-sm leading-7 text-black/55">Вам доступны {visibleSteps.length} из {steps.length} шагов — только нужная сложность, без лишних деталей.</p>
+                <p className="mt-3 text-sm leading-7 text-black/55">Шагов на этом уровне: {visibleSteps.length}</p>
               </div>
               {previewError && <p role="alert">{previewError}</p>}
               {previewLoading && <p role="status">Загрузка…</p>}

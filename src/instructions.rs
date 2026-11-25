@@ -175,18 +175,24 @@ async fn change_level(
         return Err(Error::NOT_FOUND);
     }
     let active: Vec<_> = ordered.iter().filter(|level| !level.archived).collect();
-    let index = active
-        .iter()
-        .position(|level| level.id == id)
-        .ok_or(Error::BAD)?;
     match input.action.as_str() {
-        "archive" if active.len() > 1 => {
+        "restore" => {
+            sqlx::query("UPDATE levels SET archived=false WHERE id=$1")
+                .bind(id)
+                .execute(&mut *db)
+                .await?;
+        }
+        "archive" if active.len() > 1 && active.iter().any(|level| level.id == id) => {
             sqlx::query("UPDATE levels SET archived=true WHERE id=$1")
                 .bind(id)
                 .execute(&mut *db)
                 .await?;
         }
         "up" | "down" | "move" => {
+            let index = active
+                .iter()
+                .position(|level| level.id == id)
+                .ok_or(Error::BAD)?;
             let destination = match input.action.as_str() {
                 "up" => index.checked_sub(1),
                 "down" => index.checked_add(1),
@@ -344,6 +350,12 @@ async fn update(
     Ok(Json(output))
 }
 
+impl Step {
+    fn has_content(&self) -> bool {
+        !self.title.trim().is_empty() || !self.body.trim().is_empty() || self.image.is_some()
+    }
+}
+
 fn visible<'a>(steps: &'a [Step], levels: &[Level], selected: &Level) -> Vec<&'a Step> {
     let ranks: HashMap<_, _> = levels
         .iter()
@@ -351,6 +363,7 @@ fn visible<'a>(steps: &'a [Step], levels: &[Level], selected: &Level) -> Vec<&'a
         .collect();
     steps
         .iter()
+        .filter(|step| step.has_content())
         .filter(|step| {
             ranks
                 .get(&step.level)
@@ -533,19 +546,21 @@ async fn publish(
         .await?;
     let levels = levels(&mut db).await?;
     let current = save(&mut db, id, input, &levels).await?;
-    if current.steps.is_empty()
-        || current.steps.iter().any(|step| {
-            step.title.is_empty() && step.body.trim().is_empty() && step.image.is_none()
-        })
-    {
+    let steps: Vec<_> = current
+        .steps
+        .iter()
+        .filter(|step| step.has_content())
+        .cloned()
+        .collect();
+    if steps.is_empty() {
         return Err(Error(
             StatusCode::BAD_REQUEST,
-            "Для публикации добавьте хотя бы один шаг и заполните каждый шаг.",
+            "Для публикации заполните хотя бы один шаг.",
         ));
     }
     let snapshot = Snapshot {
         title: current.title.clone(),
-        steps: current.steps.0.clone(),
+        steps,
         levels,
     };
     let release: i64 =

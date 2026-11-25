@@ -105,7 +105,7 @@ function levelsView() {
           </div>`).join("")}
         </section>
         <section class="card"><h2>Архивные уровни</h2>
-          ${archived.map(tag).join(" ") || '<p class="muted">В архиве пока ничего нет.</p>'}
+          ${archived.map(level => `<div class="level-row" data-level="${level.id}">${tag(level)}${button("Восстановить", "level-restore", "quiet")}</div>`).join("") || '<p class="muted">В архиве пока ничего нет.</p>'}
         </section>
       </div>
       <section class="card level-form" ${selected ? `data-level="${selected.id}"` : ""}>
@@ -255,9 +255,8 @@ function draftProblem(draft) {
 }
 
 function publicationProblem(draft) {
-  if (!draft.steps.length) return "Для публикации добавьте хотя бы один шаг.";
-  const index = draft.steps.findIndex(step => !(step.title.trim() || step.body.trim() || step.image));
-  return index < 0 ? "" : `Шаг ${index + 1} пуст. Для публикации добавьте заголовок, текст или изображение.`;
+  return draft.steps.some(step => step.title.trim() || step.body.trim() || step.image)
+    ? "" : "Для публикации заполните хотя бы один шаг.";
 }
 
 function updateSaveControls() {
@@ -616,7 +615,7 @@ document.addEventListener("click", event => {
       Object.assign(state, await api("/levels/" + id, "POST", { action: action.slice(6) }));
       if (action === "level-archive") state.levelEdit = null;
       render();
-      notify(action === "level-archive" ? "Уровень перенесён в архив." : "Порядок уровней сохранён.");
+      notify(({ "level-archive": "Уровень перенесён в архив.", "level-restore": "Уровень восстановлен." })[action] || "Порядок уровней сохранён.");
     } else if (action === "step-add") {
       const bytes = crypto.getRandomValues(new Uint8Array(18));
       const id = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");

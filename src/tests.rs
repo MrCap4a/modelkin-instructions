@@ -316,6 +316,9 @@ async fn import_and_publish() {
         )
         .await;
     draft["steps"].as_array_mut().unwrap().pop();
+    let mut empty = step(9, "  ", 1);
+    empty["body"] = json!("  ");
+    draft["steps"].as_array_mut().unwrap().push(empty);
     let published = editor
         .json(
             Method::POST,
@@ -329,6 +332,27 @@ async fn import_and_publish() {
         published["releases"][0]["links"].as_array().unwrap().len(),
         2
     );
+    assert_eq!(
+        published["draft"]["steps"].as_array().unwrap().len(),
+        draft["steps"].as_array().unwrap().len()
+    );
+    assert_eq!(published["releases"][0]["links"][1]["steps"], 3);
+    let restored = editor
+        .json(
+            Method::POST,
+            "/api/levels/2",
+            Some(json!({"action":"restore"})),
+            StatusCode::OK,
+        )
+        .await;
+    let level = restored["levels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|level| level["id"] == 2)
+        .unwrap();
+    assert_eq!(level["archived"], false);
+    assert_eq!(level["position"], 2);
     let shared = published["releases"][0]["path"].as_str().unwrap();
     assert_eq!(published["releases"][1]["path"], shared);
     assert_eq!(shared, format!("/guide/{:032}", 1));
