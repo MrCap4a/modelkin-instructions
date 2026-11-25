@@ -119,7 +119,7 @@ export function EditorWorkspace({levels, draft, selected, dirty, published, link
           <div>
             <div className="mb-2 flex items-center gap-2 text-xs text-black/45">
               <span className="rounded-full bg-[#f1ede2] px-2.5 py-1 font-medium">{published ? "Опубликована" : "Черновик"}</span>
-              <span id="draft-status" role="status">{dirty ? "Есть несохранённые изменения" : "Черновик сохранён"}</span>
+              <span id="draft-status" data-dirty={dirty} role="status">{dirty ? "Есть несохранённые изменения" : "Черновик сохранён"}</span>
             </div>
             <input id="draft-title" aria-label="Название инструкции" value={title} onChange={event => setTitle(event.target.value)} className="w-full rounded-md bg-transparent font-display text-2xl font-bold tracking-[-0.02em] lg:text-[30px]" />
           </div>

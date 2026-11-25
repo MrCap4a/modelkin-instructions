@@ -89,3 +89,27 @@ body:has(#figma-editor)>.top{display:none}
 .step-markdown .lp-callout-title .lp-tag{color:inherit}
 .step-markdown[data-mode="source"] .cm-scroller{font-family:ui-monospace,Consolas,monospace}
 #figma-editor input.lp-cell-input{display:block;width:100%;min-width:3em;padding:.15em .35em;border:1px solid #a39a8a;background:white;font:inherit}
+#draft-status[data-dirty="true"] {
+  position: fixed;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .65rem 1rem;
+  border: 1px solid #e5cda8;
+  border-radius: .75rem;
+  background: #fff8ec;
+  box-shadow: 0 2px 10px #45331c14;
+  color: #62451d;
+  font-size: .8125rem;
+  pointer-events: none;
+}
+#draft-status[data-dirty="true"]::before {
+  content: "";
+  width: .5rem;
+  height: .5rem;
+  border-radius: 50%;
+  background: #b2761c;
+}

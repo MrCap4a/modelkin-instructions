@@ -237,7 +237,10 @@ function render() {
 function dirty() {
   state.dirty = true;
   const status = document.querySelector("#draft-status");
-  if (status) status.textContent = "Есть несохранённые изменения";
+  if (status && status.dataset.dirty !== "true") {
+    status.dataset.dirty = "true";
+    status.textContent = "Есть несохранённые изменения";
+  }
   updateSaveControls();
 }
 
@@ -516,7 +519,9 @@ function applySavedDraft(draft) {
     title: draft.title, steps: draft.steps.length, published: state.releases.length > 0
   });
   if (keepEditor) {
-    app.querySelector("#draft-status").textContent = "Черновик сохранён";
+    const status = app.querySelector("#draft-status");
+    status.dataset.dirty = "false";
+    status.textContent = "Черновик сохранён";
     app.querySelector('[data-action="save"]').disabled = true;
   } else render();
 }
