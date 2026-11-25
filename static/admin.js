@@ -604,7 +604,7 @@ document.addEventListener("click", event => {
       await showHistoryStep(control);
     } else if (action === "restore-version" || action === "restore-step") {
       const whole = action === "restore-version";
-      if (whole && !confirm("Заменить название и все шаги черновика этой версией? Текущая публикация останется доступна читателям.")) return;
+      if (whole && !confirm("Заменить текущий черновик этой версией?")) return;
       const release = control.closest("[data-release]").dataset.release;
       const restored = await api(`/drafts/${key}/history/${release}`, "POST", {draft:state.current, step:control.dataset.source});
       state.selected = whole ? restored.steps[0]?.id : restored.steps.at(-1).id;
