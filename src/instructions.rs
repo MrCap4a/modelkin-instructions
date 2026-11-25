@@ -89,6 +89,10 @@ pub fn admin_routes() -> Router<App> {
         .route("/drafts/{id}/preview", post(preview))
         .route("/drafts/{id}/releases", get(releases).post(publish))
         .route("/drafts/{id}/history/{release}", post(restore_release))
+        .route(
+            "/drafts/{id}/history/{release}/steps/{index}",
+            get(history_step),
+        )
         .route("/archive/{release}/{level}/{page}", get(read_archive))
         .route("/images", post(upload))
 }
@@ -524,6 +528,26 @@ async fn release_list(db: &mut PgConnection, draft: Draft) -> Api<Json<Value>> {
         })
         .collect::<Vec<_>>();
     Ok(Json(json!({"draft":draft,"releases":releases})))
+}
+
+async fn history_step(
+    State(app): State<App>,
+    Path((id, release, index)): Path<(i64, i64, usize)>,
+) -> Api<Json<Value>> {
+    let index = i32::try_from(index).map_err(|_| Error::NOT_FOUND)?;
+    let step: Option<DbJson<Step>> = sqlx::query_scalar(
+        "SELECT snapshot->'steps'->$3::int FROM releases WHERE draft_id=$1 AND id=$2",
+    )
+    .bind(id)
+    .bind(release)
+    .bind(index)
+    .fetch_optional(&app.db)
+    .await?
+    .flatten();
+    let DbJson(step) = step.ok_or(Error::NOT_FOUND)?;
+    Ok(Json(
+        json!({"id":step.id,"title":step.title,"image":step.image,"rendered":render_markdown(&step.body)}),
+    ))
 }
 
 #[derive(Deserialize)]

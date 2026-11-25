@@ -170,7 +170,7 @@ function publicationView() {
         "После публикации появится постоянная ссылка на инструкцию."}</p></div>
       <div class="controls">
         ${button("Предпросмотр", "preview", "quiet", !state.current.steps.length)}
-        ${button("Опубликовать", "publish-review", "primary", !state.current.steps.length)}
+        ${button("Опубликовать", "publish-review", "primary", !!(draftProblem(state.current) || publicationProblem(state.current)))}
       </div>
     </div>
     <div class="publication-grid">
@@ -180,18 +180,35 @@ function publicationView() {
       <aside class="publication-note"><h2>Одна ссылка.<br>Новая версия.</h2><p>При обновлении инструкции ссылка остаётся прежней. Старые версии доступны в истории публикаций.</p></aside>
     </div>
     <section class="card history"><h2>История публикаций</h2>
-      ${state.releases.map((release,index) => `<details class="history-version">
-        <summary>Версия ${release.number} <span class="muted">${index ? "В архиве" : "Текущая публикация"}</span></summary>
-        <div class="stack" data-release="${release.id}">
-          <div class="controls"><a class="button quiet" href="${release.version_path}" target="_blank" rel="noopener">Открыть версию</a>
-          <button class="quiet" data-copy="${release.version_path}">Копировать ссылку на версию</button>
-          ${button("Восстановить весь черновик","restore-version","quiet")}</div>
-          <ol>${release.steps.map((step,i) => `<li class="link-row"><span>${i+1}. ${escapeHtml(step.title || "Без заголовка")}</span>
-            <button class="quiet" data-action="restore-step" data-source="${escapeHtml(step.id)}">Добавить в черновик</button></li>`).join("")}</ol>
-        </div>
-      </details>`).join("") || '<p class="muted">Версий пока нет.</p>'}
+      ${state.releases.map((release,index) => `<div class="link-row" data-release="${release.id}">
+        <div><strong>Версия ${release.number}</strong> <span class="muted">${index ? "В архиве" : "Текущая публикация"}</span></div>
+        <div class="controls"><button class="quiet" data-action="version-preview" data-index="0">Предпросмотр версии</button>
+          <button class="quiet" data-copy="${release.version_path}">Копировать ссылку на версию</button></div>
+      </div>`).join("") || '<p class="muted">Версий пока нет.</p>'}
     </section>
   </section>`;
+}
+
+async function showHistoryStep(control) {
+  const release = state.releases.find(item => item.id === Number(control.closest("[data-release]").dataset.release));
+  const index = Number(control.dataset.index);
+  const step = await api(`/drafts/${state.current.id}/history/${release.id}/steps/${index}`);
+  const count = release.steps.length;
+  state.panel = "version-preview";
+  app.innerHTML = `<section class="publication-screen stack" data-release="${release.id}">
+    <div>${button("К публикации и версиям","publication","back-link")}</div>
+    <header class="page-heading"><h1>Предпросмотр версии ${release.number}</h1>
+      ${button("Открыть всю версию в редакторе","restore-version","quiet")}</header>
+    <article class="card stack"><span class="muted">Шаг ${index + 1} из ${count}</span>
+      <h2>${escapeHtml(step.title || `Шаг ${index + 1}`)}</h2>
+      <div class="markdown">${step.image ? `<img src="/image/${escapeHtml(step.image)}" alt="Иллюстрация к шагу">` : ""}${step.rendered}</div>
+      <div><button class="quiet" data-action="restore-step" data-source="${escapeHtml(step.id)}">Добавить этот шаг в черновик</button></div>
+    </article>
+    <nav class="controls" aria-label="Шаги версии">
+      <button class="quiet" data-action="version-preview" data-index="${index-1}" ${index === 0 ? "disabled" : ""}>Предыдущий шаг</button>
+      <button class="quiet" data-action="version-preview" data-index="${index+1}" ${index+1 >= count ? "disabled" : ""}>Следующий шаг</button>
+    </nav></section>`;
+  window.scrollTo(0,0);
 }
 
 function renderEditor() {
@@ -292,7 +309,7 @@ function updateSaveControls() {
   warning.hidden = !message;
   if (warning.textContent !== message) warning.textContent = message;
   app.querySelector('[data-action="save"]').disabled = !state.dirty || !!problem;
-  app.querySelector('[data-action="publication"]').disabled = !!message;
+
 }
 function canLeave() {
   return !state.dirty || confirm("Перейти без сохранения изменений?");
@@ -583,7 +600,9 @@ document.addEventListener("click", event => {
   run(async () => {
     const step = sourceStep(control);
     const key = state.current?.id;
-    if (action === "restore-version" || action === "restore-step") {
+    if (action === "version-preview") {
+      await showHistoryStep(control);
+    } else if (action === "restore-version" || action === "restore-step") {
       const whole = action === "restore-version";
       if (whole && !confirm("Заменить название и все шаги черновика этой версией? Текущая публикация останется доступна читателям.")) return;
       const release = control.closest("[data-release]").dataset.release;
@@ -621,10 +640,9 @@ document.addEventListener("click", event => {
     } else if (action.startsWith("filter-")) {
       state.filter = action.slice(7);
       render();
-    } else if (action === "publication" || action === "history" || action === "editor") {
+    } else if (action === "publication" || action === "editor") {
       state.panel = action === "editor" ? "draft" : "publication";
       render();
-      if (action === "history") app.querySelector(".history").scrollIntoView({block:"start"});
     } else if (action === "select-step") {
       state.selected = step.id;
       render();

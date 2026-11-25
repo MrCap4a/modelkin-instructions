@@ -394,6 +394,21 @@ async fn import_and_publish() {
             .contains("Medium step")
     );
     let restore_url = format!("/api/drafts/8/history/{}", previous["id"]);
+    let preview = editor
+        .json(
+            Method::GET,
+            &format!("{restore_url}/steps/1"),
+            None,
+            StatusCode::OK,
+        )
+        .await;
+    assert_eq!(preview["id"], previous["steps"][1]["id"]);
+    assert!(
+        preview["rendered"]
+            .as_str()
+            .unwrap()
+            .contains("<strong>Markdown</strong>")
+    );
     let appended = editor
         .json(
             Method::POST,
