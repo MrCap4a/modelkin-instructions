@@ -342,6 +342,7 @@ app.addEventListener("submit", event => {
       const id = state.levelEdit;
       Object.assign(state, await api(id ? "/levels/" + id : "/levels", id ? "PUT" : "POST", fields));
       render();
+      notify(id ? `Изменения уровня «${fields.name.trim()}» сохранены.` : `Уровень «${fields.name.trim()}» создан.`);
     }
   });
 });
@@ -612,6 +613,7 @@ document.addEventListener("click", event => {
       Object.assign(state, await api("/levels/" + id, "POST", { action: action.slice(6) }));
       if (action === "level-archive") state.levelEdit = null;
       render();
+      notify(action === "level-archive" ? "Уровень перенесён в архив." : "Порядок уровней сохранён.");
     } else if (action === "step-add") {
       const bytes = crypto.getRandomValues(new Uint8Array(18));
       const id = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
@@ -686,6 +688,7 @@ app.addEventListener("drop", event => {
       Object.assign(state, await api("/levels/" + row.dataset.level, "POST",
         { action: "move", target: Number(target.dataset.level) }));
       render();
+      notify("Порядок уровней сохранён.");
     });
   }
 });
