@@ -145,7 +145,7 @@ export function EditorWorkspace({levels, draft, selected, dirty, published, prev
               <button key={item.id} data-step={item.id} data-action="select-step" aria-current={selectedStep === index ? "step" : undefined} className={`group flex w-full items-start gap-2 rounded-xl border p-3 text-left transition ${selectedStep === index ? 'border-[#f05a39]/40 bg-white shadow-[0_4px_14px_rgba(56,47,32,.08)]' : 'border-transparent hover:bg-white/70'}`}>
                 <span className="handle" draggable aria-label="Перетащить шаг"><Icon name="grip" className="mt-0.5 h-5 w-5 shrink-0 text-black/25" /></span>
                 <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-bold ${selectedStep === index ? 'bg-[#f05a39] text-white' : 'bg-[#e9e5da] text-black/55'}`}>{index + 1}</span>
-                <span className="min-w-0">
+                <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-semibold">{item.title}</span>
                   <span className="mt-1 flex items-center gap-1.5 text-[10px] font-medium text-black/65">
                     <span className="h-2 w-2 rounded-full" style={{ backgroundColor: levels.find(level => level.id === item.level)?.color }} /> {levels.find(level => level.id === item.level)?.name}
