@@ -220,7 +220,6 @@ export function EditorWorkspace({levels, draft, selected, dirty, published, prev
             {selectable.map((level, index) => (
               <div key={level.id} className="rounded-xl border border-black/10 bg-white p-3">
                 <div className="flex items-center gap-2">
-                  <Icon name="grip" className="h-4 w-4 text-black/20" />
                   <span className="h-3 w-3 rounded-full" style={{ backgroundColor: level.color }} />
                   <span className="flex-1 text-sm font-semibold">{level.name}</span>
                   <span className="text-[10px] text-black/35">{index + 1}</span>
@@ -240,7 +239,7 @@ export function EditorWorkspace({levels, draft, selected, dirty, published, prev
       </div>
 
       {previewOpen && (
-        <div className="fixed inset-0 z-40 overflow-y-auto bg-[#1a2422]/70 p-4 backdrop-blur-sm sm:p-8">
+        <div onClick={event => { if (event.target === event.currentTarget) setPreviewOpen(false) }} className="fixed inset-0 z-40 overflow-y-auto bg-[#1a2422]/70 p-4 backdrop-blur-sm sm:p-8">
           <div className="mx-auto min-h-full max-w-4xl overflow-hidden rounded-[24px] bg-[#fffdf8] shadow-2xl">
             <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-black/10 bg-[#fffdf8]/95 px-5 py-4 backdrop-blur">
               <div>
