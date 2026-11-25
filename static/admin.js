@@ -218,6 +218,7 @@ function renderEditor() {
       dirty();
     }
   });
+  updateSaveControls();
 }
 
 function render() {
@@ -237,10 +238,32 @@ function dirty() {
   state.dirty = true;
   const status = document.querySelector("#draft-status");
   if (status) status.textContent = "Есть несохранённые изменения";
-  const save = app.querySelector('[data-action="save"]');
-  if (save) save.disabled = false;
+  updateSaveControls();
 }
 
+function draftProblem(draft) {
+  const title = draft.title.trim();
+  if (!title) return "Введите название инструкции.";
+  if (title.length > 150 && [...title].length > 150) return "Сократите название инструкции до 150 символов.";
+  if (draft.steps.length > 250) return "В инструкции может быть до 250 шагов.";
+  for (const [index, step] of draft.steps.entries()) {
+    if (step.title.length > 150 && [...step.title].length > 150) return `Шаг ${index + 1}: сократите заголовок до 150 символов.`;
+    if (step.body.length > 50000 && [...step.body].length > 50000) return `Шаг ${index + 1}: сократите текст до 50 000 символов.`;
+  }
+  if (draft.steps.reduce((n, step) => n + step.body.length + step.title.length, 0) > 1500000 &&
+      new Blob([JSON.stringify(draft)]).size > 12 * 1024 * 1024) return "Инструкция превышает 12 МБ. Сократите текст шагов.";
+  return "";
+}
+
+function updateSaveControls() {
+  const warning = app.querySelector("#draft-error");
+  if (!warning) return;
+  const problem = draftProblem(state.current);
+  warning.hidden = !problem;
+  if (warning.textContent !== problem) warning.textContent = problem;
+  app.querySelector('[data-action="save"]').disabled = !state.dirty || !!problem;
+  app.querySelector('[data-action="publication"]').disabled = !state.current.steps.length || !!problem;
+}
 function canLeave() {
   return !state.dirty || confirm("Перейти без сохранения изменений?");
 }

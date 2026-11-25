@@ -7,7 +7,6 @@ import { markdown } from '@codemirror/lang-markdown'
 import { Table } from '@lezer/markdown'
 import { livePreview } from './livePreview'
 
-const limit = 50000
 
 function controls(view: EditorView) {
   return {
@@ -42,7 +41,6 @@ function controls(view: EditorView) {
       this.replace(from, to, edge + view.state.sliceDoc(from, to) + edge, from + edge.length, to + edge.length)
     },
     replace(from: number, to: number, insert: string, anchor: number, head = anchor) {
-      if (view.state.doc.length - (to - from) + insert.length > limit) return false
       view.dispatch({ changes: { from, to, insert }, selection: { anchor, head }, scrollIntoView: true })
       view.focus()
       return true
@@ -101,7 +99,6 @@ export function MarkdownEditor({ initialValue, onChange, readBody }: Props) {
         ]),
         keymap.of([...historyKeymap, ...defaultKeymap]),
         EditorView.contentAttributes.of({ 'aria-labelledby': 'step-body-label', 'aria-multiline': 'true', spellcheck: 'true' }),
-        EditorState.transactionFilter.of(tr => tr.docChanged && tr.newDoc.length > limit ? [] : tr),
         EditorView.updateListener.of(update => { if (update.docChanged) changed.current(update.state.doc.toString()) }),
         mode.current.of(source ? [] : livePreview)
       ]

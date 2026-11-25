@@ -41,7 +41,7 @@ function Icon({
   name,
   className = 'h-5 w-5',
 }: {
-  name: 'book' | 'chevron' | 'eye' | 'plus' | 'grip' | 'image' | 'table' | 'settings' | 'check' | 'more'
+  name: 'book' | 'chevron' | 'eye' | 'plus' | 'grip' | 'image' | 'table' | 'settings' | 'save' | 'more'
   className?: string
 }) {
   const paths = {
@@ -53,7 +53,7 @@ function Icon({
     image: <><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="9" r="1.5"/><path d="m4 17 5-5 4 4 2-2 5 5"/></>,
     table: <><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></>,
     settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></>,
-    check: <path d="m5 12 4 4L19 6"/>,
+    save: <><path d="M3 3h14l4 4v14H3z"/><path d="M7 3v6h9V3M7 21v-8h10v8"/></>,
     more: <><circle cx="5" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="19" cy="12" r="1" fill="currentColor"/></>,
   }
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>{paths[name]}</svg>
@@ -121,7 +121,7 @@ export function EditorWorkspace({levels, draft, selected, dirty, published, link
               <span className="rounded-full bg-[#f1ede2] px-2.5 py-1 font-medium">{published ? "Опубликована" : "Черновик"}</span>
               <span id="draft-status" role="status">{dirty ? "Есть несохранённые изменения" : "Черновик сохранён"}</span>
             </div>
-            <input id="draft-title" aria-label="Название инструкции" maxLength={150} value={title} onChange={event => setTitle(event.target.value)} className="w-full rounded-md bg-transparent font-display text-2xl font-bold tracking-[-0.02em] lg:text-[30px]" />
+            <input id="draft-title" aria-label="Название инструкции" value={title} onChange={event => setTitle(event.target.value)} className="w-full rounded-md bg-transparent font-display text-2xl font-bold tracking-[-0.02em] lg:text-[30px]" />
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button onClick={() => setPreviewOpen(true)} disabled={!steps.length} className="flex h-10 items-center gap-2 rounded-xl border border-black/15 bg-white px-4 text-sm font-semibold shadow-sm transition hover:-translate-y-0.5">
@@ -130,9 +130,10 @@ export function EditorWorkspace({levels, draft, selected, dirty, published, link
             <button data-action="publication" disabled={!steps.length} className="h-10 rounded-xl bg-[#f05a39] px-5 text-sm font-bold text-white shadow-[0_3px_0_#b83f26] transition hover:-translate-y-0.5 active:translate-y-0 active:shadow-none">
               Опубликовать
             </button>
-            <button data-action="save" disabled={!dirty} className="grid h-10 w-10 place-items-center rounded-xl border border-black/15 bg-white" aria-label="Сохранить черновик" title="Сохранить черновик"><Icon name="check" className="h-5 w-5" /></button>
+            <button data-action="save" disabled={!dirty} className="grid h-10 w-10 place-items-center rounded-xl border border-black/15 bg-white" aria-label="Сохранить черновик" title="Сохранить черновик"><Icon name="save" className="h-5 w-5" /></button>
           </div>
         </div>
+        <p id="draft-error" role="alert" hidden className="mx-auto mt-3 max-w-[1440px] rounded-xl bg-red-50 px-4 py-2 text-sm text-red-800" />
       </section>
 
       <div className="mx-auto grid max-w-[1504px] grid-cols-1 gap-0 lg:grid-cols-[300px_minmax(0,1fr)_280px]">
@@ -175,7 +176,7 @@ export function EditorWorkspace({levels, draft, selected, dirty, published, link
             </div>
             <div className="rounded-2xl border border-black/10 bg-[#fffdf9] p-5 shadow-[0_8px_30px_rgba(59,47,25,.06)] sm:p-7">
               <label htmlFor="figma-step-title" className="mb-2 block text-xs font-bold text-black/55">Заголовок шага</label>
-              <input id="figma-step-title" data-field="title" maxLength={150} defaultValue={step.title} onInput={event => changeStep("title",event.currentTarget.value)} className="w-full rounded-xl border border-black/15 bg-white px-4 py-3 font-display text-lg font-bold outline-none focus:border-[#f05a39]" />
+              <input id="figma-step-title" data-field="title" defaultValue={step.title} onInput={event => changeStep("title",event.currentTarget.value)} className="w-full rounded-xl border border-black/15 bg-white px-4 py-3 font-display text-lg font-bold outline-none focus:border-[#f05a39]" />
               <div className="mt-6 flex items-center justify-between">
                 <span id="step-body-label" className="block text-xs font-bold text-black/55">Текст инструкции</span>
                 <span className="text-[10px] font-medium text-black/35">Markdown</span>
@@ -200,7 +201,7 @@ export function EditorWorkspace({levels, draft, selected, dirty, published, link
                 <div className="flex flex-wrap gap-2">
                   {levels.filter(level => !level.archived || level.id === step.level).map(level => (
                     <button key={level.id} disabled={level.archived} aria-pressed={step.level === level.id} onClick={() => changeLevel(step.id,level.id)} className={`flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold ${step.level === level.id ? 'ring-2 ring-current ring-offset-2 shadow-sm' : 'border-transparent'}`} style={{ color: level.ink, backgroundColor: level.color }}>
-                      <span className="h-2.5 w-2.5 rounded-full bg-current" />{level.name}{step.level === level.id && <Icon name="check" className="h-3.5 w-3.5" />}
+                      <span className="h-2.5 w-2.5 rounded-full bg-current" />{level.name}{step.level === level.id && <Icon name="save" className="h-3.5 w-3.5" />}
                     </button>
                   ))}
                 </div>
