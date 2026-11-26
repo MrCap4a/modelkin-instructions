@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import { MarkdownEditor } from './MarkdownEditor'
@@ -61,6 +61,12 @@ function Icon({
 
 export function EditorWorkspace({levels, draft, selected, dirty, published, publicPath, preview, changeLevel, changeBody, readBody}: WorkspaceProps) {
   const [steps, setSteps] = useState(draft.steps)
+  const [grouped, setGrouped] = useState(() => localStorage.getItem('modelkin:step-list-view') === 'grouped')
+  const rows = steps.map((item, index) => ({item, index}))
+  if (grouped) {
+    const rank = new Map(levels.map((level, index) => [level.id, index]))
+    rows.sort((a, b) => (rank.get(b.item.level) ?? -1) - (rank.get(a.item.level) ?? -1))
+  }
   const [title, setTitle] = useState(draft.title)
   const selectable = levels.filter(level => !level.archived)
   const selectedStep = Math.max(0, steps.findIndex(step => step.id === selected))
@@ -142,10 +148,20 @@ export function EditorWorkspace({levels, draft, selected, dirty, published, publ
             <p className="text-xs font-bold uppercase tracking-[0.12em] text-black/45">Шаги · {steps.length}</p>
             <button data-action="step-add" disabled={steps.length >= 250} className="grid h-8 w-8 place-items-center rounded-lg bg-[#e6f3ee] text-[#19795b]" aria-label="Добавить шаг"><Icon name="plus" className="h-4 w-4" /></button>
           </div>
+          <div className="step-view-switch" role="group" aria-label="Порядок отображения шагов">
+            {[false, true].map(value => <button key={String(value)} type="button" aria-pressed={grouped === value} onClick={() => {
+              localStorage.setItem('modelkin:step-list-view', value ? 'grouped' : 'standard')
+              setGrouped(value)
+            }}>{value ? 'По сложности' : 'По порядку'}</button>)}
+          </div>
           <div className="space-y-2">
-            {steps.map((item, index) => (
-              <button key={item.id} data-step={item.id} data-action="select-step" aria-current={selectedStep === index ? "step" : undefined} className={`group flex w-full items-start gap-2 rounded-xl border p-3 text-left transition ${selectedStep === index ? 'border-[#f05a39]/40 bg-white shadow-[0_4px_14px_rgba(56,47,32,.08)]' : 'border-transparent hover:bg-white/70'}`}>
-                <span className="handle" draggable aria-label="Перетащить шаг"><Icon name="grip" className="mt-0.5 h-5 w-5 shrink-0 text-black/25" /></span>
+            {rows.map(({item, index}, position) => (
+              <Fragment key={item.id}>
+              {grouped && rows[position - 1]?.item.level !== item.level && (
+                <h3 className="px-2 pt-3 text-sm font-bold">{levels.find(level => level.id === item.level)?.name}</h3>
+              )}
+              <button data-step={item.id} data-action="select-step" aria-current={selectedStep === index ? "step" : undefined} className={`group flex w-full items-start gap-2 rounded-xl border p-3 text-left transition ${selectedStep === index ? 'border-[#f05a39]/40 bg-white shadow-[0_4px_14px_rgba(56,47,32,.08)]' : 'border-transparent hover:bg-white/70'}`}>
+                {!grouped && <span className="handle" draggable aria-label="Перетащить шаг"><Icon name="grip" className="mt-0.5 h-5 w-5 shrink-0 text-black/25" /></span>}
                 <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-bold ${selectedStep === index ? 'bg-[#f05a39] text-white' : 'bg-[#e9e5da] text-black/55'}`}>{index + 1}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-semibold">{item.title}</span>
@@ -154,6 +170,7 @@ export function EditorWorkspace({levels, draft, selected, dirty, published, publ
                   </span>
                 </span>
               </button>
+              </Fragment>
             ))}
           </div>
           <button data-action="step-add" disabled={steps.length >= 250} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-black/20 py-3 text-xs font-semibold text-black/50 hover:border-[#f05a39]/50 hover:text-[#f05a39]">
@@ -170,8 +187,8 @@ export function EditorWorkspace({levels, draft, selected, dirty, published, publ
                 <h2 className="font-display mt-1 text-xl font-bold">Редактирование шага</h2>
               </div>
               <div className="flex gap-1">
-                <button data-action="step-up" aria-label="Переместить шаг выше" className="grid h-9 w-9 -rotate-90 place-items-center rounded-lg border border-black/10 bg-white disabled:opacity-30" disabled={selectedStep === 0}><Icon name="chevron" className="h-4 w-4" /></button>
-                <button data-action="step-down" aria-label="Переместить шаг ниже" className="grid h-9 w-9 rotate-90 place-items-center rounded-lg border border-black/10 bg-white disabled:opacity-30" disabled={selectedStep === steps.length - 1}><Icon name="chevron" className="h-4 w-4" /></button>
+                <button data-action="step-up" aria-label="Переместить шаг выше" className="grid h-9 w-9 -rotate-90 place-items-center rounded-lg border border-black/10 bg-white disabled:opacity-30" disabled={grouped || selectedStep === 0}><Icon name="chevron" className="h-4 w-4" /></button>
+                <button data-action="step-down" aria-label="Переместить шаг ниже" className="grid h-9 w-9 rotate-90 place-items-center rounded-lg border border-black/10 bg-white disabled:opacity-30" disabled={grouped || selectedStep === steps.length - 1}><Icon name="chevron" className="h-4 w-4" /></button>
               </div>
             </div>
             <div className="rounded-2xl border border-black/10 bg-[#fffdf9] p-5 shadow-[0_8px_30px_rgba(59,47,25,.06)] sm:p-7">

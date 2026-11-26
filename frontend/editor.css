@@ -113,3 +113,7 @@ body:has(#figma-editor)>.top{display:none}
   border-radius: 50%;
   background: #b2761c;
 }
+
+#figma-editor .step-view-switch{display:flex;gap:2px;padding:3px;margin-bottom:.75rem;border-radius:.75rem;background:#eeeae1}
+#figma-editor .step-view-switch button{flex:1;min-height:32px;padding:.35rem;border-radius:.55rem;font-size:.75rem}
+#figma-editor .step-view-switch [aria-pressed="true"]{background:white;box-shadow:0 1px 3px #27201826}
