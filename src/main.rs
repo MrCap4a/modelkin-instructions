@@ -226,6 +226,7 @@ async fn main() -> Result<()> {
         Command::Serve => {
             let address = env::var("MODELKIN_BIND").unwrap_or_else(|_| "127.0.0.1:8000".into());
             let listener = TcpListener::bind(&address).await?;
+            tokio::spawn(instructions::clean_trash(db.clone()));
             let app = App {
                 db,
                 secure_cookie: env::var("MODELKIN_HTTPS").as_deref() == Ok("1"),

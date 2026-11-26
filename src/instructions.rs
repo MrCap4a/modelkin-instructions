@@ -93,6 +93,8 @@ pub fn admin_routes() -> Router<App> {
             "/drafts/{id}",
             get(get_draft).put(update).delete(delete_draft),
         )
+        .route("/trash/{id}/restore", post(restore_trash))
+        .route("/trash/{id}/purge", post(auth::purge_draft))
         .route("/drafts/{id}/preview", post(preview))
         .route("/drafts/{id}/releases", get(releases).post(publish))
         .route("/drafts/{id}/history/{release}", post(restore_release))
@@ -114,11 +116,14 @@ async fn state(State(app): State<App>) -> Api<Json<Value>> {
     let mut db = app.db.acquire().await?;
     let levels = levels(&mut db).await?;
     let drafts: Vec<(i64, String, i32, bool)> = sqlx::query_as(
-        "SELECT d.id,d.title,jsonb_array_length(d.steps),EXISTS(SELECT 1 FROM releases r WHERE r.draft_id=d.id) FROM drafts d ORDER BY d.id DESC"
+        "SELECT d.id,d.title,jsonb_array_length(d.steps),EXISTS(SELECT 1 FROM releases r WHERE r.draft_id=d.id) FROM drafts d WHERE deleted_at IS NULL ORDER BY d.id DESC"
     )
         .fetch_all(&mut *db)
         .await?;
+    let trash: Vec<(i64,String,i64)> = sqlx::query_as("SELECT id,title,extract(epoch FROM deleted_at + interval '336 hours')::bigint FROM drafts WHERE deleted_at > now()-interval '336 hours' ORDER BY deleted_at DESC,id DESC")
+        .fetch_all(&mut *db).await?;
     Ok(Json(json!({
+        "trash":trash.into_iter().map(|(id,title,expires)|json!({"id":id,"title":title,"expires":expires})).collect::<Vec<_>>(),
         "levels": levels,
         "drafts": drafts.into_iter().map(|(id,title,steps,published)| json!({"id":id,"title":title,"steps":steps,"published":published})).collect::<Vec<_>>()
     })))
@@ -239,9 +244,9 @@ async fn create(State(app): State<App>) -> Api<Json<Draft>> {
 
 async fn draft(db: &mut PgConnection, id: i64, lock: bool) -> Api<Draft> {
     let query = if lock {
-        "SELECT * FROM drafts WHERE id=$1 FOR UPDATE"
+        "SELECT * FROM drafts WHERE id=$1 AND deleted_at IS NULL FOR UPDATE"
     } else {
-        "SELECT * FROM drafts WHERE id=$1"
+        "SELECT * FROM drafts WHERE id=$1 AND deleted_at IS NULL"
     };
     sqlx::query_as(query)
         .bind(id)
@@ -256,14 +261,38 @@ async fn get_draft(State(app): State<App>, Path(id): Path<i64>) -> Api<Json<Draf
 }
 
 async fn delete_draft(State(app): State<App>, Path(id): Path<i64>) -> Api<StatusCode> {
-    let deleted = sqlx::query("DELETE FROM drafts WHERE id=$1")
-        .bind(id)
-        .execute(&app.db)
-        .await?;
+    let deleted = sqlx::query(
+        "UPDATE drafts SET deleted_at=now(),revision=revision+1 WHERE id=$1 AND deleted_at IS NULL",
+    )
+    .bind(id)
+    .execute(&app.db)
+    .await?;
     if deleted.rows_affected() == 0 {
         return Err(Error::NOT_FOUND);
     }
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn restore_trash(State(app): State<App>, Path(id): Path<i64>) -> Api<StatusCode> {
+    let result = sqlx::query("UPDATE drafts SET deleted_at=NULL,revision=revision+1 WHERE id=$1 AND deleted_at > now()-interval '336 hours'").bind(id).execute(&app.db).await?;
+    if result.rows_affected() == 0 {
+        return Err(Error::NOT_FOUND);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn clean_trash(db: sqlx::PgPool) {
+    let mut timer = tokio::time::interval(std::time::Duration::from_secs(60));
+    loop {
+        timer.tick().await;
+        if let Err(error) =
+            sqlx::query("DELETE FROM drafts WHERE deleted_at <= now()-interval '336 hours'")
+                .execute(&db)
+                .await
+        {
+            tracing::error!(%error, "trash cleanup failed");
+        }
+    }
 }
 
 async fn validate_steps(
@@ -555,7 +584,7 @@ async fn history_step(
 ) -> Api<Json<Value>> {
     let index = i32::try_from(index).map_err(|_| Error::NOT_FOUND)?;
     let step: Option<DbJson<Step>> = sqlx::query_scalar(
-        "SELECT snapshot->'steps'->$3::int FROM releases WHERE draft_id=$1 AND id=$2",
+        "SELECT snapshot->'steps'->$3::int FROM releases WHERE draft_id=$1 AND id=$2 AND EXISTS (SELECT 1 FROM drafts WHERE drafts.id=$1 AND deleted_at IS NULL)",
     )
     .bind(id)
     .bind(release)
@@ -801,7 +830,7 @@ pub async fn version(
     Query(options): Query<ReaderOptions>,
 ) -> Api<Response> {
     let snapshot: Option<DbJson<Snapshot>> =
-        sqlx::query_scalar("SELECT snapshot FROM releases WHERE share_key=$1")
+        sqlx::query_scalar("SELECT snapshot FROM releases JOIN drafts ON drafts.id=releases.draft_id WHERE share_key=$1 AND drafts.deleted_at IS NULL")
             .bind(&key)
             .fetch_optional(&app.db)
             .await?;
@@ -860,7 +889,7 @@ async fn read(
     }
     let found: Option<(DbJson<Snapshot>, i64)> = sqlx::query_as(
         "SELECT latest.snapshot,l.level_id FROM links l
-         JOIN releases original ON original.id=l.release_id
+         JOIN releases original ON original.id=l.release_id JOIN drafts d ON d.id=original.draft_id AND d.deleted_at IS NULL
          CROSS JOIN LATERAL (SELECT snapshot FROM releases WHERE draft_id=original.draft_id
              ORDER BY id DESC LIMIT 1) latest WHERE l.token=$1",
     )
@@ -889,7 +918,7 @@ async fn read_archive(
     Path((release, level, index)): Path<(i64, i64, usize)>,
 ) -> Api<Response> {
     let snapshot: Option<DbJson<Snapshot>> =
-        sqlx::query_scalar("SELECT snapshot FROM releases WHERE id=$1")
+        sqlx::query_scalar("SELECT snapshot FROM releases JOIN drafts ON drafts.id=releases.draft_id WHERE releases.id=$1 AND deleted_at IS NULL")
             .bind(release)
             .fetch_optional(&app.db)
             .await?;

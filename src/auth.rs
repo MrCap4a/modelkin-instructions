@@ -166,6 +166,49 @@ fn with_cookie(app: &App, value: &str, lifetime: u32) -> Response {
     response
 }
 
+#[derive(Deserialize)]
+pub struct PasswordConfirmation {
+    password: String,
+}
+
+pub async fn purge_draft(
+    State(app): State<App>,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+    peer: Option<Extension<ConnectInfo<SocketAddr>>>,
+    headers: HeaderMap,
+    Json(input): Json<PasswordConfirmation>,
+) -> Api<StatusCode> {
+    let invalid = Error(StatusCode::FORBIDDEN, "Неверный пароль администратора.");
+    let address = client_ip(&app, &headers, peer.map(|Extension(info)| info));
+    reserve_attempt(&app.db, address).await?;
+    if input.password.len() > 4096 {
+        return Err(invalid);
+    }
+    let mut db = app.db.begin().await?;
+    let encoded: String = sqlx::query_scalar("SELECT password FROM admin WHERE id=1 FOR SHARE")
+        .fetch_one(&mut *db)
+        .await?;
+    if !tokio::task::spawn_blocking(move || verify(&encoded, &input.password))
+        .await
+        .map_err(|_| Error::INTERNAL)?
+    {
+        return Err(invalid);
+    }
+    let result = sqlx::query("DELETE FROM drafts WHERE id=$1 AND deleted_at IS NOT NULL")
+        .bind(id)
+        .execute(&mut *db)
+        .await?;
+    if result.rows_affected() == 0 {
+        return Err(Error::NOT_FOUND);
+    }
+    sqlx::query("DELETE FROM login_attempts WHERE client=$1::text::inet")
+        .bind(address.to_string())
+        .execute(&mut *db)
+        .await?;
+    db.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn login(
     State(app): State<App>,
     peer: Option<Extension<ConnectInfo<SocketAddr>>>,

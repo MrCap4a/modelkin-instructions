@@ -135,6 +135,14 @@ function options(selected, allowArchived = false) {
 
 function libraryItems() {
   const query = state.search.trim().toLocaleLowerCase("ru");
+  if (state.filter === "trash") {
+    const items = state.trash.filter(item => item.title.toLocaleLowerCase("ru").includes(query));
+    return items.map(item => `<li class="card"><div class="entry-name"><strong>${escapeHtml(item.title)}</strong>
+      <span class="muted">Удаление навсегда: ${new Date(item.expires * 1000).toLocaleString("ru-RU")}</span></div>
+      <div class="controls"><button class="quiet" data-action="trash-restore" data-id="${item.id}">Восстановить</button>
+      <button class="quiet danger" data-action="trash-purge" data-id="${item.id}">Удалить навсегда</button></div></li>`).join("") ||
+      `<li class="card muted">${query ? "По этому запросу ничего не найдено." : "Корзина пуста."}</li>`;
+  }
   const drafts = state.drafts.filter(draft => draft.title.toLocaleLowerCase("ru").includes(query) &&
     (state.filter === "all" || draft.published === (state.filter === "published")));
   return drafts.map(draft => `<li><button type="button" class="library-entry" data-action="draft-${draft.id}">
@@ -150,7 +158,7 @@ function libraryView() {
     <header class="page-heading"><h1>Мои инструкции</h1>${button("Создать инструкцию", "new", "primary")}</header>
     <div class="library-tools">
       <div class="controls" aria-label="Фильтр инструкций">
-        ${[["all","Все"],["draft","Черновики"],["published","Опубликованные"]].map(([id,label]) =>
+        ${[["all","Все"],["draft","Черновики"],["published","Опубликованные"],["trash","Корзина"]].map(([id,label]) =>
           button(label,"filter-"+id,"quiet "+(state.filter===id?"chosen":""))).join("")}
       </div>
       <label class="search-label"><input type="search" aria-label="Поиск по названию" id="library-search" value="${escapeHtml(state.search)}" placeholder="Поиск по названию…"></label>
@@ -631,19 +639,42 @@ document.addEventListener("click", event => {
       state.current = null;
       state.panel = action;
       render();
+    } else if (action === "trash-restore") {
+      await api(`/trash/${control.dataset.id}/restore`, "POST");
+      await refresh(); render(); notify("Инструкция восстановлена.");
+    } else if (action === "trash-purge") {
+      const item = state.trash.find(entry => entry.id === Number(control.dataset.id));
+      const modal = dialog("Удалить навсегда?", `<form class="stack"><p>«${escapeHtml(item.title)}» и все её версии будут удалены без возможности восстановления.</p>
+        <label>Пароль администратора<input type="password" name="password" autocomplete="current-password" required></label>
+        <p data-error role="alert"></p><button class="delete-confirm">Удалить навсегда</button></form>`);
+      const form = modal.querySelector("form.stack");
+      form.password.focus();
+      form.onsubmit = async event => {
+        event.preventDefault();
+        const submit = form.querySelector("button");
+        if (submit.disabled) return;
+        submit.disabled = true;
+        try {
+          await api(`/trash/${item.id}/purge`, "POST", {password:form.password.value});
+          modal.close(); await refresh(); render(); notify("Инструкция удалена навсегда.");
+        } catch (error) {
+          form.querySelector("[data-error]").textContent = error.message;
+          form.password.select();
+        } finally { submit.disabled = false; }
+      };
     } else if (action === "delete-instruction") {
       const id = Number(control.dataset.id);
       const item = state.drafts.find(draft => draft.id === id);
-      const modal = dialog("Удалить инструкцию?", `<p>«${escapeHtml(item.title)}» будет удалена вместе со всеми версиями. Выданные ссылки перестанут открываться.</p>
-        <div class="controls"><button class="quiet" data-cancel>Отмена</button><button class="delete-confirm" data-confirm>Удалить инструкцию</button></div>`);
+      const modal = dialog("Переместить в корзину?", `<p>«${escapeHtml(item.title)}» можно будет восстановить со всеми версиями в течение 14 дней. Пока инструкция в корзине, ссылки закрыты.</p>
+        <div class="controls"><button class="quiet" data-cancel>Отмена</button><button class="delete-confirm" data-confirm>В корзину</button></div>`);
       modal.querySelector("[data-cancel]").onclick = () => modal.close();
       modal.querySelector("[data-confirm]").onclick = () => {
         modal.close();
         run(async () => {
           await api("/drafts/" + id, "DELETE");
-          state.drafts = state.drafts.filter(draft => draft.id !== id);
+          await refresh();
           render();
-          notify("Инструкция удалена.");
+          notify("Инструкция перемещена в корзину.");
         });
       };
     } else if (action.startsWith("filter-")) {

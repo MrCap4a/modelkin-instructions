@@ -153,7 +153,7 @@ async fn import_and_publish() {
     std::fs::remove_file(source).unwrap();
 
     let app = router(App {
-        db,
+        db: db.clone(),
         secure_cookie: true,
         trust_proxy: false,
     });
@@ -496,6 +496,84 @@ async fn import_and_publish() {
             StatusCode::CONFLICT,
         )
         .await;
+    assert_eq!(
+        editor
+            .request(Method::DELETE, "/api/drafts/8", None)
+            .await
+            .status(),
+        StatusCode::NO_CONTENT
+    );
+    let library = editor
+        .json(Method::GET, "/api/state", None, StatusCode::OK)
+        .await;
+    assert_eq!(library["trash"][0]["id"], 8);
+    for path in [shared, pinned, easy.as_str()] {
+        assert_eq!(
+            reader.request(Method::GET, path, None).await.status(),
+            StatusCode::NOT_FOUND
+        );
+    }
+    assert_eq!(
+        editor
+            .request(
+                Method::POST,
+                "/api/trash/8/purge",
+                Some(json!({"password":"wrong"}))
+            )
+            .await
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        editor
+            .request(Method::POST, "/api/trash/8/restore", None)
+            .await
+            .status(),
+        StatusCode::NO_CONTENT
+    );
+    assert!(reader.text(pinned).await.contains("Original title"));
+    assert_eq!(
+        editor
+            .request(Method::DELETE, "/api/drafts/8", None)
+            .await
+            .status(),
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        editor
+            .request(
+                Method::POST,
+                "/api/trash/8/purge",
+                Some(json!({"password":"known-test-password"}))
+            )
+            .await
+            .status(),
+        StatusCode::NO_CONTENT
+    );
+    sqlx::query("UPDATE drafts SET deleted_at=now()-interval '15 days' WHERE id=9")
+        .execute(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        editor
+            .request(Method::POST, "/api/trash/9/restore", None)
+            .await
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+    let cleanup = tokio::spawn(instructions::clean_trash(db.clone()));
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM drafts WHERE id=9)")
+            .fetch_one(&db)
+            .await
+            .unwrap()
+        {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    cleanup.abort();
     editor
         .json(Method::POST, "/api/logout", None, StatusCode::OK)
         .await;
