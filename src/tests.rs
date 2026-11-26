@@ -238,6 +238,12 @@ async fn import_and_publish() {
         .json(Method::POST, "/api/drafts", None, StatusCode::OK)
         .await;
     assert_eq!(created["id"], 9);
+    assert!(
+        created["introduction"]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Привет")
+    );
 
     let mut sequence = created.clone();
     for grouped in [true, false] {
@@ -307,6 +313,7 @@ async fn import_and_publish() {
     assert_eq!(upload.status(), StatusCode::OK);
     let uploaded: Value =
         serde_json::from_slice(&to_bytes(upload.into_body(), 2048).await.unwrap()).unwrap();
+    draft["introduction"] = json!({"text":"Welcome <model>","image":uploaded["id"]});
     let image_path = format!("/image/{}", uploaded["id"].as_str().unwrap());
     let image = reader.request(Method::GET, &image_path, None).await;
     assert_eq!(image.headers()[header::CONTENT_TYPE], "image/webp");
@@ -398,11 +405,13 @@ async fn import_and_publish() {
         new_page.contains("Second &amp; &lt;version&gt;") && new_page.contains("Advanced step")
     );
     assert!(!new_page.contains("Common step"));
+    assert!(new_page.contains("Welcome &lt;model&gt;") && new_page.contains(&image_path));
     let new_easy = published["releases"][0]["links"][1]["path"]
         .as_str()
         .unwrap();
     assert_eq!(new_easy, easy);
     let with_media = reader.text(&format!("{new_easy}/2")).await;
+    assert!(!with_media.contains("Welcome &lt;model&gt;"));
     assert!(with_media.find("Before image").unwrap() < with_media.find(&image_path).unwrap());
     assert!(with_media.find(&image_path).unwrap() < with_media.find("After image").unwrap());
     assert!(with_media.contains("<table>") && with_media.contains("<td>Bolt</td>"));

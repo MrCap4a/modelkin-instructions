@@ -22,14 +22,18 @@ type Step = {
   rendered?: string
 }
 
+type Introduction = {text: string; image: string | null}
+
 type WorkspaceProps = {
   levels: Level[]
-  draft: {grouped?: boolean; title: string; steps: Step[]}
+  draft: {introduction: Introduction; grouped?: boolean; title: string; steps: Step[]}
   selected: string | null
   dirty: boolean
   publicPath?: string
   published: boolean
   preview: (level: number) => Promise<Step[]>
+  changeIntroduction: (intro: Introduction) => void
+  uploadIntro: (file: File, done: (id: string) => void) => void
   changeOrder: (grouped: boolean) => void
   changeLevel: (id: string, level: number) => void
   changeBody: (id: string, body: string) => void
@@ -60,9 +64,14 @@ function Icon({
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>{paths[name]}</svg>
 }
 
-export function EditorWorkspace({levels, draft, selected, dirty, published, publicPath, preview, changeOrder, changeLevel, changeBody, readBody}: WorkspaceProps) {
+export function EditorWorkspace({levels, draft, selected, dirty, published, publicPath, preview, changeIntroduction, uploadIntro, changeOrder, changeLevel, changeBody, readBody}: WorkspaceProps) {
   const [steps, setSteps] = useState(draft.steps)
   const grouped = !!draft.grouped
+  const [intro, setIntro] = useState(draft.introduction)
+  function editIntro(value: Introduction) {
+    setIntro(value)
+    changeIntroduction(value)
+  }
   const [title, setTitle] = useState(draft.title)
   const selectable = levels.filter(level => !level.archived)
   const selectedStep = Math.max(0, steps.findIndex(step => step.id === selected))
@@ -173,6 +182,20 @@ export function EditorWorkspace({levels, draft, selected, dirty, published, publ
         </aside>
 
         <section className="min-w-0 bg-[#f4f1e9] px-5 py-6 lg:px-8">
+          <details className="card mx-auto mb-5 max-w-3xl" open={!steps.length || undefined}>
+            <summary className="cursor-pointer font-display font-bold">Введение</summary>
+            <div className="stack mt-3">
+              <p className="muted">Это первое, что увидит читатель перед выбором сложности. Поприветствуй его и покажи, что получится в конце сборки.</p>
+              <label>Приветствие<textarea rows={4} maxLength={5000} value={intro.text} onChange={event => editIntro({...intro,text:event.target.value})} /></label>
+              {intro.image && <img className="intro-photo" src={`/image/${intro.image}`} alt="Готовая модель" />}
+              <label>Фото готовой модели<input type="file" accept="image/*" onChange={event => {
+                const file = event.target.files?.[0]
+                event.target.value = ''
+                if (file) uploadIntro(file, id => editIntro({...draft.introduction,image:id}))
+              }} /></label>
+              {intro.image && <button type="button" className="quiet" onClick={() => editIntro({...intro,image:null})}>Убрать фото</button>}
+            </div>
+          </details>
           <div className="mx-auto max-w-3xl" data-step={step?.id}>
             {step ? <>
             <div className="mb-5 flex items-center justify-between">
@@ -271,6 +294,7 @@ export function EditorWorkspace({levels, draft, selected, dirty, published, publ
               <div className="mb-10">
                 <span className="rounded-full px-3 py-1.5 text-xs font-bold" style={{ color: activePreview?.ink, backgroundColor: activePreview?.color }}>{activePreview?.name}</span>
                 <h2 className="font-display mt-4 text-4xl font-bold tracking-[-.03em]">{title}</h2>
+                <div className="intro-block"><p>{intro.text}</p>{intro.image && <img src={`/image/${intro.image}`} alt="Готовая модель" />}</div>
                 <p className="mt-3 text-sm leading-7 text-black/55">Шагов на этом уровне: {visibleSteps.length}</p>
               </div>
               {previewError && <p role="alert">{previewError}</p>}

@@ -1,0 +1,1 @@
+ALTER TABLE drafts ADD COLUMN introduction jsonb NOT NULL DEFAULT '{"text":"Привет! Спасибо, что выбрал наш проект и доверил нам своё время. Вместе мы соберём модель шаг за шагом. Выбери свой уровень сложности и начнём!","image":null}';

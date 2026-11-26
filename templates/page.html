@@ -17,10 +17,15 @@
 <main class="min-h-screen bg-[#f4f1e9] px-5 py-8 text-[#24231f]">
   <article class="mx-auto max-w-3xl">
     <header class="reader-outline mb-10">
+      <h1 class="mt-5 font-display text-4xl font-bold tracking-[-.04em] sm:text-5xl">{{ title }}</h1>
+      {% if page == 1 and introduction and (introduction.text or introduction.image) %}
+      <section class="intro-block" aria-label="Введение"><p>{{ introduction.text }}</p>
+        {% if introduction.image %}<img src="/image/{{ introduction.image }}" alt="Готовая модель">{% endif %}
+      </section>
+      {% endif %}
       <nav class="reader-levels" aria-label="Уровень сложности">{% for choice in choices %}
         <a class="tag" href="{{ choice.url }}" style="--tag:{{ choice.color }};--tag-ink:{{ choice.ink }}" {% if choice.id == level.id %}aria-current="true"{% endif %}>{{ choice.name }}</a>
       {% endfor %}</nav>
-      <h1 class="mt-5 font-display text-4xl font-bold tracking-[-.04em] sm:text-5xl">{{ title }}</h1>
       {% if archived %}<p class="mt-4 text-sm text-black/55">Архивная версия</p>{% endif %}
       {% if step %}
       <p class="mt-4 text-sm text-black/55">Шаг {{ page }} из {{ count }}</p>

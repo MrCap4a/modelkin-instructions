@@ -334,3 +334,5 @@ h1{font-size:clamp(1.3rem,2.5vw,1.88rem)}h2{font-size:1.12rem}
 
 #figma-editor [data-restored]{outline:2px solid #c26d1e;outline-offset:-2px;background:#fff1d7}
 #figma-editor [data-restored] .handle{color:#8d4a13}
+
+.intro-block{margin:1rem 0}.intro-block p{white-space:pre-wrap;overflow-wrap:anywhere}.intro-block img,.intro-photo{display:block;max-width:100%;height:auto;max-height:26rem;object-fit:contain;margin-block:.8rem;border-radius:.75rem}

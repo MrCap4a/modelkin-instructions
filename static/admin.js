@@ -237,6 +237,12 @@ function renderEditor() {
     publicPath: state.releases[0]?.path,
     preview: async level => (await api(`/drafts/${state.current.id}/preview`, "POST",
       { steps: state.current.steps, grouped: state.current.grouped, level })).steps,
+    changeIntroduction: intro => { state.current.introduction = intro; dirty(); },
+    uploadIntro: (file, done) => run(async () => {
+      const data = new FormData();
+      data.append("image", file);
+      done((await api("/images", "POST", data)).id);
+    }),
     changeOrder: grouped => {
       state.current.grouped = grouped;
       dirty();
@@ -366,12 +372,13 @@ async function showPreview(level = activeLevels()[0].id) {
       const data = await api(`/drafts/${state.current.id}/preview`, "POST",
         { steps: state.current.steps, grouped: state.current.grouped, level: Number(select.value) });
       if (number !== requestNumber) return;
-      content.innerHTML = data.steps.map((step, index) => `<article class="card">
+      const intro = state.current.introduction;
+      content.innerHTML = `<section class="intro-block"><p>${escapeHtml(intro.text)}</p>${intro.image ? `<img src="/image/${escapeHtml(intro.image)}" alt="Готовая модель">` : ""}</section>` + (data.steps.map((step, index) => `<article class="card">
         <p class="muted">Шаг ${index + 1} из ${data.steps.length}</p>
         ${step.title ? `<h3>${escapeHtml(step.title)}</h3>` : ""}
         ${step.image ? `<img class="preview-image" src="/image/${escapeHtml(step.image)}" alt="Иллюстрация к шагу">` : ""}
         <div class="markdown">${step.rendered}</div>
-      </article>`).join("") || "Для этого уровня пока нет шагов.";
+      </article>`).join("") || "Для этого уровня пока нет шагов.");
     } catch (error) {
       if (number === requestNumber) content.textContent = error.message;
     }

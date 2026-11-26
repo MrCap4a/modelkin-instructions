@@ -35,8 +35,15 @@ pub struct Step {
     image: Option<String>,
 }
 
+#[derive(Clone, Deserialize, Serialize)]
+struct Introduction {
+    text: String,
+    image: Option<String>,
+}
+
 #[derive(FromRow, Serialize)]
 struct Draft {
+    introduction: DbJson<Introduction>,
     grouped: bool,
     id: i64,
     title: String,
@@ -46,6 +53,7 @@ struct Draft {
 
 #[derive(Deserialize)]
 struct DraftInput {
+    introduction: Option<Introduction>,
     #[serde(default)]
     grouped: bool,
     title: String,
@@ -63,6 +71,7 @@ struct PreviewInput {
 
 #[derive(Deserialize, Serialize)]
 struct Snapshot {
+    introduction: Option<Introduction>,
     #[serde(default)]
     grouped: bool,
     title: String,
@@ -376,13 +385,26 @@ async fn save(
         return Err(Error::BAD);
     }
     validate_steps(db, &old, levels, &mut input.steps).await?;
+    let intro = input.introduction.unwrap_or(old.introduction.0);
+    if intro.text.chars().count() > 5000 {
+        return Err(Error::BAD);
+    }
+    if let Some(image) = &intro.image {
+        let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM images WHERE id=$1)")
+            .bind(image)
+            .fetch_one(&mut *db)
+            .await?;
+        if !exists {
+            return Err(Error::BAD);
+        }
+    }
     assembly_order(&mut input.steps, levels, input.grouped);
     Ok(sqlx::query_as(
-        "UPDATE drafts SET title=$1, steps=$2, grouped=$4, revision=revision+1 WHERE id=$3 RETURNING *",
+        "UPDATE drafts SET title=$1, steps=$2, grouped=$4, introduction=$5, revision=revision+1 WHERE id=$3 RETURNING *",
     )
     .bind(title)
     .bind(DbJson(input.steps))
-    .bind(id).bind(input.grouped)
+    .bind(id).bind(input.grouped).bind(DbJson(intro))
     .fetch_one(db)
     .await?)
 }
@@ -627,7 +649,7 @@ async fn restore_release(
             .fetch_optional(&mut *db)
             .await?
             .ok_or(Error::NOT_FOUND)?;
-    let (title, steps, grouped) = if let Some(step_id) = input.step {
+    let (title, steps, grouped, introduction) = if let Some(step_id) = input.step {
         if input.draft.steps.len() >= 250 {
             return Err(Error(StatusCode::BAD_REQUEST, "В черновике уже 250 шагов."));
         }
@@ -643,16 +665,29 @@ async fn restore_release(
             .await?;
         draft.steps.0.push(step);
         assembly_order(&mut draft.steps, &levels, draft.grouped);
-        (draft.title, draft.steps.0, draft.grouped)
+        (
+            draft.title,
+            draft.steps.0,
+            draft.grouped,
+            draft.introduction,
+        )
     } else {
-        (snapshot.title, snapshot.steps, snapshot.grouped)
+        (
+            snapshot.title,
+            snapshot.steps,
+            snapshot.grouped,
+            snapshot
+                .introduction
+                .map(DbJson)
+                .unwrap_or(current.introduction),
+        )
     };
     let restored = sqlx::query_as(
-        "UPDATE drafts SET title=$2,steps=$3,grouped=$4,revision=revision+1 WHERE id=$1 RETURNING *",
+        "UPDATE drafts SET title=$2,steps=$3,grouped=$4,introduction=$5,revision=revision+1 WHERE id=$1 RETURNING *",
     )
     .bind(id)
     .bind(title)
-    .bind(DbJson(steps)).bind(grouped)
+    .bind(DbJson(steps)).bind(grouped).bind(introduction)
     .fetch_one(&mut *db)
     .await?;
     db.commit().await?;
@@ -694,6 +729,7 @@ async fn publish(
         ));
     }
     let snapshot = Snapshot {
+        introduction: Some(current.introduction.0.clone()),
         grouped: current.grouped,
         title: current.title.clone(),
         steps,
@@ -971,6 +1007,7 @@ fn render_reader(
         page => index,
         count => visible.len(),
         reader_base => page_prefix,
+        introduction => snapshot.introduction,
         archived => archived || base.starts_with("/version/"),
         outline => visible.iter().map(|step| &step.title).collect::<Vec<_>>(),
     }))
