@@ -37,6 +37,7 @@ pub struct Step {
 
 #[derive(FromRow, Serialize)]
 struct Draft {
+    grouped: bool,
     id: i64,
     title: String,
     steps: DbJson<Vec<Step>>,
@@ -45,6 +46,8 @@ struct Draft {
 
 #[derive(Deserialize)]
 struct DraftInput {
+    #[serde(default)]
+    grouped: bool,
     title: String,
     steps: Vec<Step>,
     revision: i64,
@@ -52,12 +55,16 @@ struct DraftInput {
 
 #[derive(Deserialize)]
 struct PreviewInput {
+    #[serde(default)]
+    grouped: bool,
     steps: Vec<Step>,
     level: i64,
 }
 
 #[derive(Deserialize, Serialize)]
 struct Snapshot {
+    #[serde(default)]
+    grouped: bool,
     title: String,
     steps: Vec<Step>,
     levels: Vec<Level>,
@@ -312,6 +319,16 @@ async fn validate_steps(
     Ok(())
 }
 
+fn assembly_order(steps: &mut [Step], levels: &[Level], grouped: bool) {
+    if grouped {
+        let ranks: HashMap<_, _> = levels
+            .iter()
+            .map(|level| (level.id, level.position))
+            .collect();
+        steps.sort_by_key(|step| std::cmp::Reverse(ranks.get(&step.level).copied()));
+    }
+}
+
 async fn save(
     db: &mut PgConnection,
     id: i64,
@@ -330,12 +347,13 @@ async fn save(
         return Err(Error::BAD);
     }
     validate_steps(db, &old, levels, &mut input.steps).await?;
+    assembly_order(&mut input.steps, levels, input.grouped);
     Ok(sqlx::query_as(
-        "UPDATE drafts SET title=$1, steps=$2, revision=revision+1 WHERE id=$3 RETURNING *",
+        "UPDATE drafts SET title=$1, steps=$2, grouped=$4, revision=revision+1 WHERE id=$3 RETURNING *",
     )
     .bind(title)
     .bind(DbJson(input.steps))
-    .bind(id)
+    .bind(id).bind(input.grouped)
     .fetch_one(db)
     .await?)
 }
@@ -479,6 +497,7 @@ async fn preview(
         .ok_or(Error::BAD)?;
     validate_steps(&mut db, &original, &levels, &mut input.steps).await?;
     db.commit().await?;
+    assembly_order(&mut input.steps, &levels, input.grouped);
     let steps = visible(&input.steps, &levels, selected).into_iter().map(|step| {
         json!({"id":step.id,"title":step.title,"body":step.body,"image":step.image,"level":step.level,"rendered":render_markdown(&step.body)})
     }).collect::<Vec<_>>();
@@ -579,7 +598,7 @@ async fn restore_release(
             .fetch_optional(&mut *db)
             .await?
             .ok_or(Error::NOT_FOUND)?;
-    let (title, steps) = if let Some(step_id) = input.step {
+    let (title, steps, grouped) = if let Some(step_id) = input.step {
         if input.draft.steps.len() >= 250 {
             return Err(Error(StatusCode::BAD_REQUEST, "В черновике уже 250 шагов."));
         }
@@ -594,16 +613,17 @@ async fn restore_release(
             .fetch_one(&mut *db)
             .await?;
         draft.steps.0.push(step);
-        (draft.title, draft.steps.0)
+        assembly_order(&mut draft.steps, &levels, draft.grouped);
+        (draft.title, draft.steps.0, draft.grouped)
     } else {
-        (snapshot.title, snapshot.steps)
+        (snapshot.title, snapshot.steps, snapshot.grouped)
     };
     let restored = sqlx::query_as(
-        "UPDATE drafts SET title=$2,steps=$3,revision=revision+1 WHERE id=$1 RETURNING *",
+        "UPDATE drafts SET title=$2,steps=$3,grouped=$4,revision=revision+1 WHERE id=$1 RETURNING *",
     )
     .bind(id)
     .bind(title)
-    .bind(DbJson(steps))
+    .bind(DbJson(steps)).bind(grouped)
     .fetch_one(&mut *db)
     .await?;
     db.commit().await?;
@@ -645,6 +665,7 @@ async fn publish(
         ));
     }
     let snapshot = Snapshot {
+        grouped: current.grouped,
         title: current.title.clone(),
         steps,
         levels,

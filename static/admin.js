@@ -212,6 +212,10 @@ async function showHistoryStep(control) {
 }
 
 function renderEditor() {
+  if (state.current.grouped) {
+    const rank = new Map(state.levels.map((level, i) => [level.id, i]));
+    state.current.steps.sort((a,b) => rank.get(b.level) - rank.get(a.level));
+  }
   app.innerHTML = '<div id="figma-editor"></div>';
   window.mountFigmaEditor(app.firstElementChild, {
     draft: state.current,
@@ -224,7 +228,12 @@ function renderEditor() {
     published: state.releases.length > 0,
     publicPath: state.releases[0]?.path,
     preview: async level => (await api(`/drafts/${state.current.id}/preview`, "POST",
-      { steps: state.current.steps, level })).steps,
+      { steps: state.current.steps, grouped: state.current.grouped, level })).steps,
+    changeOrder: grouped => {
+      state.current.grouped = grouped;
+      dirty();
+      render();
+    },
     changeLevel: (id, level) => {
       state.current.steps.find(step => step.id === id).level = level;
       dirty();
@@ -347,7 +356,7 @@ async function showPreview(level = activeLevels()[0].id) {
     content.textContent = "Загрузка…";
     try {
       const data = await api(`/drafts/${state.current.id}/preview`, "POST",
-        { steps: state.current.steps, level: Number(select.value) });
+        { steps: state.current.steps, grouped: state.current.grouped, level: Number(select.value) });
       if (number !== requestNumber) return;
       content.innerHTML = data.steps.map((step, index) => `<article class="card">
         <p class="muted">Шаг ${index + 1} из ${data.steps.length}</p>
@@ -607,7 +616,7 @@ document.addEventListener("click", event => {
       if (whole && !confirm("Заменить текущий черновик этой версией?")) return;
       const release = control.closest("[data-release]").dataset.release;
       const restored = await api(`/drafts/${key}/history/${release}`, "POST", {draft:state.current, step:control.dataset.source});
-      state.selected = whole ? restored.steps[0]?.id : restored.steps.at(-1).id;
+      state.selected = whole ? restored.steps[0]?.id : restored.steps.find(step => !state.current.steps.some(old => old.id === step.id)).id;
       if (!whole) localStorage.setItem(historyMark(state.selected), "1");
       applySavedDraft(restored);
       state.panel = "draft";
@@ -702,7 +711,10 @@ document.addEventListener("click", event => {
 
 function dragTarget(element) {
   const selector = state.dragged?.kind === "level" ? "[data-sortable-level]" : "[data-step]";
-  return element.closest(selector);
+  const target = element.closest(selector);
+  if (target && state.dragged?.kind === "step" && state.current.grouped &&
+      sourceStep(target)?.level !== sourceStep(state.dragged.row)?.level) return null;
+  return target;
 }
 
 function clearDrag() {

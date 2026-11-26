@@ -239,6 +239,34 @@ async fn import_and_publish() {
         .await;
     assert_eq!(created["id"], 9);
 
+    let mut sequence = created.clone();
+    for grouped in [true, false] {
+        sequence["grouped"] = json!(grouped);
+        sequence["steps"] = json!([
+            step(41, "Easy A", 1),
+            step(42, "Hard", 3),
+            step(43, "Easy B", 1)
+        ]);
+        let release = editor
+            .json(
+                Method::POST,
+                "/api/drafts/9/releases",
+                Some(sequence),
+                StatusCode::OK,
+            )
+            .await;
+        sequence = release["draft"].clone();
+        assert_eq!(sequence["grouped"], grouped);
+        let expected = if grouped { "Hard" } else { "Easy A" };
+        assert_eq!(sequence["steps"][0]["title"], expected);
+        let url = release["releases"][0]["path"].as_str().unwrap();
+        assert!(
+            reader
+                .text(&format!("{url}?level=3"))
+                .await
+                .contains(&format!(">{expected}</h2>"))
+        );
+    }
     let mut draft = editor
         .json(Method::GET, "/api/drafts/8", None, StatusCode::OK)
         .await;
